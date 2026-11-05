@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { ChatVoiceLiveWaveform } from "@/components/messages/ChatVoiceLiveWaveform";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
 import { useSPx } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraMessages, floraSpacing, sPx } from "@/lib/theme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
 
@@ -34,6 +35,7 @@ function ChatVoiceComposeBarInner({
   canSend = false,
 }: Props) {
   const sp = useSPx();
+  useFloraTheme();
   const [recordingMs, setRecordingMs] = useState(0);
 
   useEffect(() => {

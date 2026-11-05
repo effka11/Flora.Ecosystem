@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { FontReadyGate } from "@/app/_shared/FontReadyGate";
+import { FloraThemeProvider } from "@/app/_shared/FloraThemeProvider";
+import { MonoTextLayer } from "@/app/_shared/MonoTextLayer";
 import { webBuildId } from "@/lib/buildId";
 import { FLORA_TITLE_SEPARATOR } from "@/lib/floraDocumentTitle";
 import "./globals.css";
@@ -64,13 +66,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ) : null}
         <script
           dangerouslySetInnerHTML={{
+            __html: `(function(){try{var raw=localStorage.getItem("flora.userSettings.prefs");var theme="dark";if(raw){var prefs=JSON.parse(raw);var stored=prefs&&prefs.customization&&prefs.customization.theme;if(stored==="light"||stored==="flora")theme=stored}document.documentElement.setAttribute("data-flora-theme",theme)}catch(e){document.documentElement.setAttribute("data-flora-theme","dark")}})();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
             __html: `(function(){function u(){var b=document.body;if(!b)return;b.classList.remove("fonts-pending");b.classList.add("fonts-ready")}if(document.body)u();else document.addEventListener("DOMContentLoaded",u,{once:true});if(document.fonts&&document.fonts.ready)document.fonts.ready.then(u,u);setTimeout(u,2500)})();`,
           }}
         />
       </head>
       <body suppressHydrationWarning className={`${manrope.className} fonts-pending`}>
-        <FontReadyGate />
-        {children}
+        <FloraThemeProvider>
+          <FontReadyGate />
+          <MonoTextLayer />
+          {children}
+        </FloraThemeProvider>
       </body>
     </html>
   );

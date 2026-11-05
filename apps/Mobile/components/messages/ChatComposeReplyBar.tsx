@@ -86,6 +86,6 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(16),
   },
   dismissBtnPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
 }));

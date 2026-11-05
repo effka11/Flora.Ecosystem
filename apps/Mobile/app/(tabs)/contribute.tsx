@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -124,6 +125,7 @@ function DonationsPane({ pageWidth, listPaddingBottom, isActive }: PaneProps) {
 }
 
 export default function ContributeScreen() {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const pagerGenRef = useRef(0);

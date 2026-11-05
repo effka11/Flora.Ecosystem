@@ -11,7 +11,7 @@ import {
   isBirthDateDigitsComplete,
   isoToBirthDateDigits,
 } from "@/lib/birthDateMask";
-import { tracking } from "@/lib/theme";
+import { floraColors, tracking } from "@/lib/theme";
 
 type BirthDateFieldProps = {
   label?: string;
@@ -69,7 +69,7 @@ export function BirthDateField({ label = "Дата рождения", value, onC
           }
         }}
         placeholder="__.__.____"
-        placeholderTextColor="rgba(250, 250, 250, 0.3)"
+        placeholderTextColor={floraColors.overlay(0.3)}
         keyboardType="number-pad"
         autoCorrect={false}
         maxLength={10}

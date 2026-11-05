@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteCommunity,
@@ -37,6 +38,7 @@ import { communityScreenHref, decodeRouteParam } from "@/lib/socialRoutes";
 import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 
 export default function CommunitySettingsScreen() {
+  useFloraTheme();
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string | string[] }>();
   const slug = decodeRouteParam(Array.isArray(rawSlug) ? rawSlug[0] ?? "" : rawSlug ?? "");
   const insets = useSafeAreaInsets();

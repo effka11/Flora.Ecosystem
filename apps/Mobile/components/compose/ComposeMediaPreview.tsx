@@ -88,7 +88,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
     gap: sPx(4),
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
+    borderColor: floraColors.overlay(0.08),
   },
   videoLabel: {
     color: floraColors.gray,

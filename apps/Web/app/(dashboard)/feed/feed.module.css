@@ -67,6 +67,9 @@
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  /* Windows ClearType: the scroller gets its own compositing layer, so a parent
+     group does not reach it. opacity < 1 forces grayscale AA here. */
+  opacity: 0.999;
   /* Иначе Chromium scroll-anchoring гоняет scrollTop вокруг порога compact↔normal. */
   overflow-anchor: none;
   scrollbar-width: none;
@@ -83,6 +86,9 @@
 .feedTopBlock {
   /* local origin=0 in .feedPage (not dashboard overlay §5); rows 0–9 stay fully visible.
      top: 0 — шапка не сдвигается вверх на (9−5) рядов при скролле. */
+  /* Sticky header is promoted out of the scroller's opacity group; its own
+     transparent group forces grayscale AA on Windows. */
+  opacity: 0.999;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -170,6 +176,9 @@
   border: none;
   outline: none;
   background: transparent;
+  /* Header text is painted in nested layers; opacity on the text leaf itself
+     is the reliable grayscale-AA switch in Chrome on Windows. */
+  opacity: 0.999;
   color: var(--flora-white-template);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 300;
@@ -180,6 +189,7 @@
 
 .peopleSearchInput::placeholder {
   color: var(--flora-gray);
+  opacity: 0.999;
 }
 
 .peopleSearchSendBtn {
@@ -234,6 +244,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  opacity: 0.999;
   height: calc(2 * var(--flora-grid-step) + var(--flora-grid-step-fine));
   border: none;
   background: transparent;
@@ -251,6 +262,7 @@
 .peopleTabLabel {
   position: relative;
   top: calc(-1 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
+  opacity: 0.999;
   font-family: inherit;
   font-size: max(1px, var(--flora-sPx-15)) !important;
   font-weight: inherit;
@@ -292,6 +304,7 @@
   position: absolute;
   left: 0;
   right: 0;
+  opacity: 0.999;
   /* +1 вторичная клетка вниз + небольшой px-дожим */
   top: calc(2 * var(--flora-grid-step-fine) + var(--flora-sPx-2));
   height: var(--flora-grid-step);
@@ -324,6 +337,7 @@
 .feedTabRefreshLabel {
   position: absolute;
   top: 50%;
+  opacity: 0.999;
   right: calc(100% - 49 * var(--flora-grid-step));
   transform: translateY(-50%);
   pointer-events: none;
@@ -435,6 +449,8 @@
 .peopleListContent {
   flex: 0 0 auto;
   min-width: 0;
+  /* Same as .feedTopBlock: the post list is a separate composited branch. */
+  opacity: 0.999;
   /* Список на ширину 37…90; padding-right убран — иначе полоска не доходит до верт. 90. ⋮ — внутри широкой карточки. */
   padding: 0;
   /* clip, не hidden: hidden + overflow-y:visible в Firefox становится overflow-y:auto
@@ -1346,6 +1362,7 @@
 
 .newPostsBanner {
   /* Стикает под полной шапкой (9 рядов первичной сетки). */
+  opacity: 0.999;
   position: sticky;
   top: calc(9 * var(--flora-grid-step));
   z-index: 8;

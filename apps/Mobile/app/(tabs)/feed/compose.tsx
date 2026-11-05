@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -67,6 +68,7 @@ function routeParam(value: string | string[] | undefined): string {
 }
 
 export default function FeedComposeScreen() {
+  useFloraTheme();
   const sp = useSPx();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -525,7 +527,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   topBlock: {
     backgroundColor: floraColors.bg,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
     borderBottomWidth: 1,
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: 0,

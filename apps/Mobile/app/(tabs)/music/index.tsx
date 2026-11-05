@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -100,6 +101,7 @@ function MusicPane({
 }
 
 export default function MusicScreen() {
+  useFloraTheme();
   const sp = useSPx();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();

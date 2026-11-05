@@ -295,7 +295,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(250,250,250,0.1)",
+    borderColor: floraColors.overlay(0.1),
     borderRadius: 2 * floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,

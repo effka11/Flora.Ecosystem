@@ -30,7 +30,7 @@ type Props = {
   onClose: () => void;
 };
 
-const PH = "rgba(250, 250, 250, 0.3)";
+
 
 function readBackupRevision(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
@@ -263,7 +263,7 @@ export function SecurityFscpKeysModal({ visible, onClose }: Props) {
               placeholder="Пароль аккаунта"
               secureTextEntry
               editable={!busy}
-              placeholderTextColor={PH}
+              placeholderTextColor={floraColors.overlay(0.3)}
             />
 
             <View style={ui.formActionsRow}>

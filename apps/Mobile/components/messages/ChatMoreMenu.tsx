@@ -264,7 +264,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     padding: floraSpacing.gridFine * 1.5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -283,10 +283,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   menuItemActive: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemIcon: {
     width: sPx(24),
@@ -296,7 +296,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   menuItemLabel: {
     flex: 1,
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),
@@ -324,12 +324,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     opacity: 0.45,
   },
   submenuItemLabel: {
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),
   },
   submenuItemLabelDisabled: {
-    color: "rgba(250, 250, 250, 0.45)",
+    color: floraColors.overlay(0.45),
   },
 }));

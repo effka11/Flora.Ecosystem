@@ -20,6 +20,7 @@ import { feedPostAuthor } from "@/lib/feedPostAuthor";
 import { formatCompactCount } from "@/lib/formatCompactCount";
 import { isOwnFeedPost } from "@/lib/isOwnFeedPost";
 import { useSPx } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -78,6 +79,7 @@ export const PostCard = memo(function PostCard({
   onEditPost,
 }: Props) {
   const sp = useSPx();
+  useFloraTheme();
   const me = useSessionStore((s) => s.me);
 
   const authorMeta = feedPostAuthor(post, me?.username);
@@ -166,7 +168,7 @@ export const PostCard = memo(function PostCard({
                     color={engagement.liked ? floraColors.like : floraColors.gray}
                     filled={engagement.liked}
                   />
-                  <Text style={[styles.actionText, engagement.liked && styles.liked]} numberOfLines={1}>
+                  <Text style={styles.actionText} numberOfLines={1}>
                     {formatCompactCount(engagement.likesCount)}
                   </Text>
                 </Pressable>
@@ -225,7 +227,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraFeedPost.paddingHorizontal,
     paddingTop: floraFeedPost.paddingTop,
     paddingBottom: floraFeedPost.paddingBottom,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
     borderBottomWidth: 1,
   },
   cardRow: {
@@ -322,8 +324,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: sPx(7),
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.28)",
-    backgroundColor: "rgba(164, 209, 138, 0.08)",
+    borderColor: floraColors.overlay(0.28),
+    backgroundColor: floraColors.overlay(0.08),
     paddingHorizontal: sPx(11),
     paddingVertical: sPx(7),
     marginTop: floraSpacing.gridFine * 2,
@@ -381,9 +383,6 @@ const styles = liveGridStyles(() => StyleSheet.create({
     fontWeight: "300",
     letterSpacing: tracking(0.39),
     includeFontPadding: false,
-  },
-  liked: {
-    color: floraColors.like,
   },
   reposted: {
     color: floraColors.greenLight,

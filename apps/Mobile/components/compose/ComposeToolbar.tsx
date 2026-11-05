@@ -178,7 +178,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: 2 * floraSpacing.gridFine,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.14)",
+    backgroundColor: floraColors.overlay(0.14),
     marginRight: floraSpacing.gridFine,
   },
   publishText: {

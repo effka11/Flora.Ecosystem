@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accountBlockedWallBody } from "@/lib/accountBlockedWallCopy";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -13,6 +14,7 @@ import { useSessionStore } from "@/stores/sessionStore";
  * expo-router and session teardown can still route to login.
  */
 export function AccountBlockedWall() {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const until = useSessionStore((s) => s.me?.accountBlockedUntil);
   const logout = useSessionStore((s) => s.logout);

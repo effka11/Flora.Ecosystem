@@ -112,7 +112,7 @@
   z-index: 1;
   border: none;
   background: rgba(0, 0, 0, 0.55);
-  color: #f2f4f2;
+  color: var(--flora-text-on-bubble);
   border-radius: 9999px;
   width: calc(1px * round(28 * var(--flora-grid-s)));
   height: calc(1px * round(28 * var(--flora-grid-s)));

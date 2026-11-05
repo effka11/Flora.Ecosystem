@@ -60,7 +60,7 @@ export function ProfileStatusField({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="rgba(250, 250, 250, 0.3)"
+          placeholderTextColor={floraColors.overlay(0.3)}
           textAlignVertical="top"
           style={styles.input}
         />
@@ -103,7 +103,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     position: "relative",
     minHeight: floraSpacing.grid * 6,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.15)",
+    borderColor: floraColors.overlay(0.15),
     borderRadius: sPx(10),
     overflow: "hidden",
   },

@@ -4,6 +4,7 @@ import { memo } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { useSPx } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraSpacing, sPx } from "@/lib/theme";
 import type { MessageDeliveryState } from "@/lib/messageDeliveryState";
 
@@ -21,6 +22,7 @@ function ChatMessageReadReceiptInner({
   compactMargin = false,
 }: Props) {
   const sp = useSPx();
+  useFloraTheme();
   const receiptStyle = [styles.receipt, compactMargin && styles.receiptCompactMargin];
 
   if (state === "sending") {

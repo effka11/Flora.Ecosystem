@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isTabActive, tabSegmentIndex } from "@/lib/getActiveTabRouteKey";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import {
   floraColors,
   floraNativeStackOptions,
@@ -19,6 +20,7 @@ function isFeedCompose(segments: readonly string[], pathname: string): boolean {
 }
 
 export default function FeedStackLayout() {
+  useFloraTheme();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, sPx(8));
@@ -35,7 +37,7 @@ export default function FeedStackLayout() {
   }, [inCompose, navigation, tabBarBottomInset]);
 
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, { backgroundColor: floraColors.bg }]}>
       <Stack screenOptions={{ ...floraNativeStackOptions, animation: "none", headerShown: false }}>
         {/*
           Тот же push, что у чата (lib/chatPushTransition.ts, compose*):
@@ -64,6 +66,5 @@ export default function FeedStackLayout() {
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    backgroundColor: floraColors.bg,
   },
 });

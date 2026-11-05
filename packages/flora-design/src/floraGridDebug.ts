@@ -240,14 +240,14 @@ function supportsConsoleCss(): boolean {
 
 const CSS = {
   badge:
-    "background:#2c3527;color:#a4d18a;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px;border-radius:4px 0 0 4px;letter-spacing:0.12em",
-  boot: "background:#a4d18a;color:#0c0c0c;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
+    "background:#303132;color:#dde2e8;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px;border-radius:4px 0 0 4px;letter-spacing:0.12em",
+  boot: "background:#dde2e8;color:#0a0a0a;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
   up: "background:#3d6b4f;color:#d4efc4;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
   down: "background:#6b3d3d;color:#f0cfcf;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
   hold: "background:#5c4a24;color:#f0e0b0;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
-  mode: "background:#2a3325;color:#a4d18a;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
-  size: "background:#2a3325;color:#a4d18a;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
-  rest: "background:#141414;color:#fafafa;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 10px;border-radius:0 4px 4px 0"
+  mode: "background:#343536;color:#dde2e8;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
+  size: "background:#343536;color:#dde2e8;font:700 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 8px",
+  rest: "background:#111111;color:#dde2e8;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 10px;border-radius:0 4px 4px 0"
 };
 
 function reasonStyle(reason: Exclude<FloraGridDebugReason, "idle">): string {

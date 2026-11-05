@@ -167,7 +167,7 @@ function MenuRow({
       onPress={onPress}
     >
       <View style={styles.menuItemIcon}>
-        <Ionicons name={icon} size={sp(18)} color={danger ? "#f6a8a8" : floraColors.gray} />
+        <Ionicons name={icon} size={sp(18)} color={danger ? floraColors.signal : floraColors.gray} />
       </View>
       <Text style={[styles.menuItemLabel, danger && styles.menuItemDanger]}>{label}</Text>
     </Pressable>
@@ -191,7 +191,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     transform: [{ translateY: floraFeedPost.moreBtnNudgeY }],
   },
   triggerPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
   },
   modalRoot: {
     flex: 1,
@@ -204,7 +204,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     padding: floraSpacing.gridFine * 1.5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -222,7 +222,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   menuItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemIcon: {
     width: sPx(24),
@@ -232,12 +232,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   menuItemLabel: {
     flex: 1,
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.whiteTemplate,
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),
   },
   menuItemDanger: {
-    color: "#f6a8a8",
+    color: floraColors.signal,
   },
 }));

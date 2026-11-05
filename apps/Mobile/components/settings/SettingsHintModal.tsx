@@ -80,7 +80,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     paddingHorizontal: floraSpacing.gridFine * 2,
     paddingVertical: floraSpacing.gridFine * 1.5,
     // Тень только вниз/вправо — не заезжает на символ слева.
@@ -91,7 +91,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     elevation: 8,
   },
   message: {
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),

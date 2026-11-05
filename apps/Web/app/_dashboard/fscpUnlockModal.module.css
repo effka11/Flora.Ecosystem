@@ -98,7 +98,7 @@
 .error {
   margin: 0;
   font-size: max(1px, var(--flora-sPx-13));
-  color: #ff7a7a;
+  color: var(--flora-signal);
 }
 
 .hint {

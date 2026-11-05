@@ -656,7 +656,7 @@
 }
 
 .statusLineErr {
-  color: color-mix(in srgb, #f87171 85%, var(--flora-white-template) 15%);
+  color: color-mix(in srgb, var(--flora-signal) 85%, var(--flora-white-template) 15%);
 }
 
 .composerWrap {
@@ -1025,7 +1025,7 @@
   padding: calc(var(--flora-grid-step))
     calc(var(--flora-grid-step) + 3 * (var(--flora-grid-step) + var(--flora-grid-step-fine)) + 3 * var(--flora-grid-step) - 3 * var(--flora-grid-step-fine))
     calc(var(--flora-grid-step)) calc(var(--flora-grid-step) + var(--flora-grid-step-fine));
-  /* Обводка как у поисковых полей: шаблонный тёмно-зелёный (--flora-green-dark). */
+  /* Обводка как у поисковых полей: шаблонный графитовый (--flora-green-dark). */
   border-radius: var(--flora-sPx-12);
   border: 1px solid var(--flora-green-dark);
   background: transparent;
@@ -1054,5 +1054,5 @@
   margin: 0;
   font-size: max(1px, var(--flora-sPx-13));
   font-weight: 300;
-  color: color-mix(in srgb, #f87171 88%, var(--flora-white-template) 12%);
+  color: color-mix(in srgb, var(--flora-signal) 88%, var(--flora-white-template) 12%);
 }

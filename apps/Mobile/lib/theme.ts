@@ -1,4 +1,9 @@
-import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
+import type { FloraThemeTokens } from "@/lib/floraTheme";
+import {
+  getFloraColors,
+  getFloraThemePalette,
+  type FloraColors,
+} from "@/lib/floraThemeRuntime";
 import {
   getFloraGridRuntime,
   kegl,
@@ -9,31 +14,41 @@ import {
 
 export { kegl, sPx, tracking } from "@/lib/floraGridRuntime";
 
-const t = FLORA_THEME_TOKENS;
+/**
+ * Палитра Flora — синхронизирована с apps/Web/app/globals.css через client-core.
+ * Живой proxy: читает активную тему, поэтому inline-стили подхватывают
+ * переключение без перезапуска приложения.
+ */
+export const floraColors: FloraColors = new Proxy({} as FloraColors, {
+  get(_target, prop) {
+    return getFloraColors()[prop as keyof FloraColors];
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getFloraColors() as object);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Object.getOwnPropertyDescriptor(getFloraColors() as object, prop);
+  },
+  has(_target, prop) {
+    return prop in getFloraColors();
+  },
+});
 
-/** Палитра Flora — синхронизирована с apps/Web/app/globals.css через client-core. */
-export const floraColors = {
-  bg: t.bg,
-  surface: t.reserveHoverSurface,
-  surfaceElevated: t.reserveSurfaceThem,
-  text: t.whiteTemplate,
-  textMuted: t.gray,
-  accent: t.greenLight,
-  accentDark: t.greenDark,
-  like: t.like,
-  border: t.grayDivider,
-  error: t.like,
-  whiteTemplate: t.whiteTemplate,
-  gray: t.gray,
-  grayLight: t.whiteTemplate,
-  greenLight: t.greenLight,
-  greenDark: t.greenDark,
-  greenBubble: t.greenBubble,
-  popoverRail: t.reserveSubstrateGrayMuted,
-  popoverInset: t.reservePopoverInset,
-  popoverDivider: t.reservePopoverDivider,
-  textOnBubble: t.textOnBubble,
-};
+/** Полный набор токенов активной темы (резервные цвета, bubble-смеси, grid). */
+export const floraTokens: FloraThemeTokens = new Proxy({} as FloraThemeTokens, {
+  get(_target, prop) {
+    return getFloraThemePalette()[prop as keyof FloraThemeTokens];
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getFloraThemePalette() as object);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Object.getOwnPropertyDescriptor(getFloraThemePalette() as object, prop);
+  },
+  has(_target, prop) {
+    return prop in getFloraThemePalette();
+  },
+});
 
 export const floraAuthTypography = liveGridRecord(() => ({
   light: "300" as const,
@@ -213,11 +228,17 @@ export function floraTabBarHiddenStyle(bottomInset: number) {
   };
 }
 
-/** Опции native stack — тёмный фон карточки, без белой полосы при переходе. */
+/** Опции native stack — фон карточки из активной темы, без белой полосы при переходе. */
 export const floraNativeStackOptions = {
-  headerStyle: { backgroundColor: floraColors.surface },
-  headerTintColor: floraColors.text,
-  contentStyle: { backgroundColor: floraColors.bg },
+  get headerStyle() {
+    return { backgroundColor: getFloraColors().surface };
+  },
+  get headerTintColor() {
+    return getFloraColors().text;
+  },
+  get contentStyle() {
+    return { backgroundColor: getFloraColors().bg };
+  },
   animation: "fade" as const,
   animationDuration: 180,
   gestureEnabled: true,
@@ -230,7 +251,7 @@ export const floraProfile = liveGridRecord(() => ({
   avatarSize: 6 * floraSpacing.grid + 2 * sPx(4),
   statusFontSize: kegl(15),
   statusLineHeight: 2.1 * kegl(15),
-  statusStripe: "rgba(250, 250, 250, 0.08)",
+  statusStripe: floraColors.overlay(0.08),
 }));
 
 export const floraMotion = {
@@ -310,9 +331,9 @@ export const floraMessages = liveGridRecord(() => {
     emojiPanelRadius: sPx(12),
     emojiPanelOuterGap: floraSpacing.grid,
     emojiPanelBottomExtra: floraSpacing.grid,
-    themBubbleBg: t.messagesBubbleThemBg,
-    themBubbleText: t.messagesBubbleThemText,
-    themBubbleTime: t.messagesBubbleThemTime,
-    divider: t.reservePopoverDivider,
+    themBubbleBg: getFloraThemePalette().messagesBubbleThemBg,
+    themBubbleText: getFloraThemePalette().messagesBubbleThemText,
+    themBubbleTime: getFloraThemePalette().messagesBubbleThemTime,
+    divider: getFloraThemePalette().reservePopoverDivider,
   };
 });

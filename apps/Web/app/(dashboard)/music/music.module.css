@@ -716,7 +716,7 @@
   box-sizing: border-box;
   scroll-snap-align: start;
   border-radius: var(--flora-sPx-16);
-  background: #121212;
+  background: #101011;
   padding: calc(1.2 * var(--flora-grid-step));
   display: flex;
   flex-direction: column;
@@ -760,7 +760,7 @@
   bottom: 0;
   z-index: 0;
   border-radius: inherit;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--genre-color) 22%, #121212) 0%, #121212 100%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--genre-color) 22%, #101011) 0%, #101011 100%);
 }
 
 .genreCardBg::after {
@@ -812,7 +812,7 @@
   scroll-snap-align: start;
   border-radius: var(--flora-sPx-16);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  background: linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 14%, #121212) 0%, #121212 100%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 14%, #101011) 0%, #101011 100%);
   padding: calc(1.2 * var(--flora-grid-step));
   display: flex;
   flex-direction: column;
@@ -915,7 +915,7 @@
   scroll-snap-align: start;
   border-radius: var(--flora-sPx-16);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.06);
-  background: #121212;
+  background: #101011;
   padding: calc(1.2 * var(--flora-grid-step));
   display: flex;
   flex-direction: column;
@@ -1003,8 +1003,8 @@
   border-radius: inherit;
   background: linear-gradient(
     145deg,
-    color-mix(in srgb, var(--playlist-color) 24%, #121212) 0%,
-    #121212 100%
+    color-mix(in srgb, var(--playlist-color) 24%, #101011) 0%,
+    #101011 100%
   );
 }
 
@@ -1490,7 +1490,7 @@
 
 .flowMiniCloseBtn:hover,
 .flowMiniCloseBtn:focus-visible {
-  color: #f87171;
+  color: var(--flora-signal);
   background: transparent;
 }
 
@@ -2239,7 +2239,7 @@
 }
 
 .myMusicTrackRemoveBtn:hover {
-  color: #f87171;
+  color: var(--flora-signal);
   background: rgba(248, 113, 113, 0.1);
 }
 
@@ -2434,7 +2434,7 @@
 
 .playlistCloseBtn:hover,
 .playlistCloseBtn:focus-visible {
-  color: #f87171;
+  color: var(--flora-signal);
   background: transparent;
 }
 
@@ -2469,7 +2469,7 @@
   font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
   letter-spacing: var(--flora-tracking-15);
-  color: #ff7e7e;
+  color: var(--flora-signal);
   cursor: pointer;
 }
 
@@ -2663,8 +2663,8 @@
 .artistHeroCover {
   background: linear-gradient(
     145deg,
-    color-mix(in srgb, var(--flora-green-light) 24%, #121212) 0%,
-    #121212 100%
+    color-mix(in srgb, var(--flora-green-light) 24%, #101011) 0%,
+    #101011 100%
   );
   display: grid;
   place-items: center;
@@ -2772,7 +2772,7 @@
   min-height: calc(18 * var(--flora-grid-step));
   border-radius: var(--flora-sPx-22);
   overflow: hidden;
-  background: #121212;
+  background: #101011;
   box-shadow: 0 var(--flora-sPx-18) calc(var(--flora-sPx-24) + var(--flora-sPx-22)) rgba(0, 0, 0, 0.24);
 }
 
@@ -2915,7 +2915,7 @@
 .genreSubgenreChip[data-active],
 .genreSubgenreChip[data-active]:hover,
 .genreSubgenreChip[data-active]:focus-visible {
-  color: #0e0e0e;
+  color: var(--flora-on-accent);
   border-color: var(--flora-green-light);
   background: var(--flora-green-light);
 }
@@ -3247,7 +3247,7 @@
   min-height: calc(18 * var(--flora-grid-step));
   border-radius: var(--flora-sPx-20);
   overflow: hidden;
-  background: #121212;
+  background: #101011;
   box-shadow: 0 var(--flora-sPx-18) calc(var(--flora-sPx-24) + var(--flora-sPx-12)) rgba(0, 0, 0, 0.24);
 }
 

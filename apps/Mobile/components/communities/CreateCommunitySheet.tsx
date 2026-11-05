@@ -176,7 +176,7 @@ export function CreateCommunitySheet({ visible, onClose, onCreated }: Props) {
               value={isPublic}
               onValueChange={setIsPublic}
               disabled={submitting}
-              trackColor={{ false: floraColors.greenDark, true: "rgba(164, 209, 138, 0.45)" }}
+              trackColor={{ false: floraColors.greenDark, true: floraColors.overlay(0.45) }}
               thumbColor={isPublic ? floraColors.greenLight : floraColors.gray}
             />
           </View>

@@ -13,9 +13,9 @@ import {
   type EmojiGridRow,
   type EmojiGridSection,
 } from "@/lib/messages/emojiGrid";
-import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { useFloraGrid } from "@/lib/FloraGridProvider";
-import { floraColors, floraMessages, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
+import { floraColors, floraMessages, floraSpacing, floraTokens, kegl, sPx, tracking } from "@/lib/theme";
 
 const FLORA_GITHUB_URL = "https://github.com/effka11/Flora.Ecosystem";
 
@@ -42,6 +42,7 @@ function buildFlatItems(sections: EmojiGridSection[]): ListItem[] {
 
 function ChatMessageEmojiPanelInner({ onPickEmoji }: Props) {
   useFloraGrid();
+  useFloraTheme();
   const [tab, setTab] = useState<StickerPanelTab>("emoji");
   const [activeCategory, setActiveCategory] = useState<EmojiCategoryId>("smileys_emotion");
   // Грид монтируем после кадра открытия панели — тяжёлый FlashList не должен блокировать JS-поток
@@ -279,7 +280,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
   },
   railBtnActive: {
-    backgroundColor: FLORA_THEME_TOKENS.reservePopoverAccentSelected,
+    backgroundColor: floraTokens.reservePopoverAccentSelected,
   },
   railBtnPressed: {
     opacity: 0.72,
@@ -305,7 +306,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   tabActive: {
-    backgroundColor: FLORA_THEME_TOKENS.reservePopoverAccentChip,
+    backgroundColor: floraTokens.reservePopoverAccentChip,
   },
   tabPressed: {
     opacity: 0.72,
@@ -353,7 +354,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: 2 * floraSpacing.grid,
   },
   emojiCellPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
   },
   emojiText: {
     fontSize: kegl(22),

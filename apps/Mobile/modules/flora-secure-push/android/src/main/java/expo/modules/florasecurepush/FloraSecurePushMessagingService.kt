@@ -362,7 +362,7 @@ class FloraSecurePushMessagingService : FirebaseMessagingService() {
     const val AVATAR_READ_TIMEOUT_MS = 2_500
     const val AVATAR_MAX_DIMENSION = 256
     const val MAX_AVATAR_BYTES = 2L * 1024 * 1024
-    const val DEFAULT_AVATAR_BG = "#2c3527"
-    const val DEFAULT_AVATAR_FG = "#a4d18a"
+    const val DEFAULT_AVATAR_BG = "#2e2f30"
+    const val DEFAULT_AVATAR_FG = "#dde2e8"
   }
 }

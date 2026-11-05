@@ -169,7 +169,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: floraSpacing.grid,
   },
   optionRowSelected: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   optionRadio: {
     width: floraSpacing.grid,
@@ -179,7 +179,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   optionLabel: {
     flex: 1,
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "300",
     letterSpacing: tracking(0.42),

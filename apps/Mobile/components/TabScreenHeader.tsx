@@ -142,7 +142,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.gridFine,
   },
   shellBorder: {
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
     borderBottomWidth: 1,
   },
   extraPad: {

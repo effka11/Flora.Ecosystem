@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { apiUpdateProfile } from "@flora/client-core/auth";
 import { isApiRequestError } from "@flora/client-core/api";
 import { router } from "expo-router";
@@ -13,6 +14,7 @@ import { mobileSessionStore } from "@/lib/session";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export default function CompleteProfileScreen() {
+  useFloraTheme();
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);

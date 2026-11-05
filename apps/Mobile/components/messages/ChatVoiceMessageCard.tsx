@@ -16,6 +16,7 @@ import { peekPendingVoiceUri } from "@/lib/pendingVoiceOutgoing";
 import { ChatVoiceWaveform } from "@/components/messages/ChatVoiceWaveform";
 import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors, floraMessages, floraSpacing, sPx, tracking } from "@/lib/theme";
+import { floraTokenAlpha } from "@/lib/floraTheme";
 import { formatVoiceDuration } from "@/lib/voiceWaveform";
 
 type Props = {
@@ -206,10 +207,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexShrink: 1,
   },
   durationMe: {
-    color: "rgba(242, 244, 246, 0.78)",
+    color: floraTokenAlpha(floraColors.textOnBubble, 0.78),
   },
   durationThem: {
-    color: "rgba(143, 143, 143, 0.85)",
+    color: floraColors.gray,
   },
   sendTimeSlot: {
     flexShrink: 0,

@@ -24,10 +24,12 @@ import {
   subscribeChatWarm,
 } from "@/lib/chatPushTransition";
 import { floraColors, floraNativeStackOptions, sPx } from "@/lib/theme";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 
 export default function MessagesLayout() {
+  useFloraTheme();
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, { backgroundColor: floraColors.bg }]}>
       <Stack screenOptions={{ ...floraNativeStackOptions, animation: "none" }}>
         {/* freezeOnBlur параллаксу не мешает: на Fabric native-stack не
             замораживает экран прямо под фокусным (!isBelowFocused в
@@ -177,7 +179,6 @@ const ParkedThreadSlot = memo(function ParkedThreadSlot({
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    backgroundColor: floraColors.bg,
   },
   parkHost: {
     position: "absolute",

@@ -560,8 +560,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
   actionsCard: {
     borderRadius: sPx(12),
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
-    backgroundColor: "rgba(250, 250, 250, 0.03)",
+    borderColor: floraColors.overlay(0.08),
+    backgroundColor: floraColors.overlay(0.03),
     overflow: "hidden",
   },
   channelRow: {
@@ -591,7 +591,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   actionsDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
     marginHorizontal: floraSpacing.grid,
   },
   actionsFooter: {
@@ -639,7 +639,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     maxWidth: sPx(320),
     borderRadius: sPx(12),
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
+    borderColor: floraColors.overlay(0.08),
     backgroundColor: floraColors.surfaceElevated,
     paddingVertical: floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,

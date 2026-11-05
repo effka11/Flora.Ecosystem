@@ -79,7 +79,7 @@ export const authStyles = liveGridStyles(() => StyleSheet.create({
   },
   underlineTrack: {
     height: 1,
-    backgroundColor: "rgba(143, 143, 143, 0.78)",
+    backgroundColor: floraColors.gray,
     overflow: "hidden",
   },
   underlineActive: {
@@ -174,7 +174,7 @@ export const authStyles = liveGridStyles(() => StyleSheet.create({
     textAlign: "center",
   },
   error: {
-    color: floraColors.gray,
+    color: floraColors.signal,
     fontSize: kegl(12),
     fontWeight: floraAuthTypography.light,
     textAlign: "center",
@@ -194,7 +194,7 @@ export const authStyles = liveGridStyles(() => StyleSheet.create({
     maxWidth: sPx(380),
     borderRadius: sPx(16),
     borderWidth: 1,
-    borderColor: "rgba(143, 143, 143, 0.45)",
+    borderColor: "rgba(151, 154, 158, 0.45)",
     backgroundColor: "rgba(20, 20, 20, 0.96)",
     paddingHorizontal: sPx(16),
     paddingVertical: sPx(12),

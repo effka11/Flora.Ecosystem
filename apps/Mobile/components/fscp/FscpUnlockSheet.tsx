@@ -163,7 +163,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     fontSize: kegl(15),
   },
   error: {
-    color: "#ff7a7a",
+    color: floraColors.signal,
     fontSize: kegl(13),
   },
   actions: {

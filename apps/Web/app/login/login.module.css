@@ -10,6 +10,8 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  /* See dashboardShell.module.css: grayscale AA on Windows. */
+  opacity: 0.999;
   --flora-grid-origin-x: calc(var(--flora-frame-left) - var(--flora-crop-x));
   --flora-grid-origin-y: calc(var(--flora-frame-top) - var(--flora-crop-y));
 }
@@ -17,6 +19,7 @@
 .gridToggle {
   position: fixed;
   top: var(--flora-sPx-14);
+  opacity: 0.999;
   right: var(--flora-sPx-14);
   z-index: 70;
   height: calc(2 * var(--flora-grid-step) + var(--flora-sPx-2));
@@ -741,7 +744,7 @@
 .error {
   font-size: max(1px, var(--flora-sPx-12));
   font-weight: 300;
-  color: var(--flora-gray);
+  color: var(--flora-signal);
   text-align: center;
   line-height: 1.4;
   margin: 0 0 var(--flora-sPx-4);

@@ -1,4 +1,5 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { formatGroupListPreview } from "@flora/client-core/messaging";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -49,6 +50,7 @@ export function GroupConversationListRow({
   onToggleSelect,
   onEnterSelect,
 }: Props) {
+  useFloraTheme();
   const [lit, setLit] = useState(false);
   const title = group.title.trim() || "Группа";
   const previewText = formatGroupListPreview({
@@ -182,14 +184,14 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    borderBottomColor: "rgba(250, 250, 250, 0.06)",
+    borderBottomColor: floraColors.overlay(0.06),
     borderBottomWidth: 1,
   },
   shellSelected: {
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
+    backgroundColor: floraColors.overlay(0.12),
   },
   shellPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.04)",
+    backgroundColor: floraColors.overlay(0.04),
   },
   item: {
     flex: 1,
@@ -243,12 +245,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: floraSpacing.gridFine * 4,
     paddingHorizontal: floraSpacing.gridFine,
     borderRadius: sPx(11),
-    backgroundColor: "rgba(164, 209, 138, 0.9)",
+    backgroundColor: floraColors.signal,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
-    color: "#10200e",
+    color: floraColors.bg,
     fontSize: kegl(13),
     fontWeight: "300",
     letterSpacing: tracking(0.39),

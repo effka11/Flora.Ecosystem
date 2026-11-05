@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGetMusicArtist, apiGetMusicArtistTracks } from "@flora/client-core/api";
@@ -17,6 +18,7 @@ function routeParam(value: string | string[] | undefined): string {
 }
 
 export default function MusicArtistScreen() {
+  useFloraTheme();
   const sp = useSPx();
   const params = useLocalSearchParams<{ artistUuid?: string }>();
   const artistUuid = routeParam(params.artistUuid);
@@ -98,7 +100,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(18),
     backgroundColor: floraColors.surface,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
+    borderColor: floraColors.overlay(0.08),
   },
   artistCover: {
     width: sPx(92),

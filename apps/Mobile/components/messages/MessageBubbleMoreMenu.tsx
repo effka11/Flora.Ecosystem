@@ -495,7 +495,7 @@ function MenuRow({
         <Ionicons
           name={icon}
           size={sp(18)}
-          color={danger ? "#f6a8a8" : disabled ? "rgba(250,250,250,0.35)" : floraColors.gray}
+          color={danger ? "#f6a8a8" : disabled ? floraColors.overlay(0.35) : floraColors.gray}
         />
       </View>
       <Text style={[styles.menuItemLabel, danger && styles.menuItemDanger, disabled && styles.menuItemLabelDisabled]}>
@@ -560,7 +560,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     padding: floraSpacing.gridFine * 1.5,
     shadowOpacity: 0,
     elevation: 0,
@@ -575,7 +575,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   menuItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemDisabled: {
     opacity: 0.45,
@@ -588,13 +588,13 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   menuItemLabel: {
     flex: 1,
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),
   },
   menuItemLabelDisabled: {
-    color: "rgba(250, 250, 250, 0.45)",
+    color: floraColors.overlay(0.45),
   },
   menuItemDanger: {
     color: "#f6a8a8",

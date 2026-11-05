@@ -2,9 +2,11 @@ import NetInfo from "@react-native-community/netinfo";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { liveGridStyles } from "@/lib/liveGridStyles";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, kegl, sPx } from "@/lib/theme";
 
 export function OfflineBanner() {
+  useFloraTheme();
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: sPx(12),
   },
   text: {
-    color: floraColors.text,
+    color: floraColors.bg,
     textAlign: "center",
     fontSize: kegl(13),
   },

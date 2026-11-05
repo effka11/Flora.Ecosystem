@@ -156,7 +156,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     zIndex: 2,
   },
   xBtnPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
   },
   iconWrap: {
     height: sPx(36),
@@ -175,7 +175,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: "100%",
     height: sPx(4),
     borderRadius: sPx(2),
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
     overflow: "hidden",
   },
   barFill: {

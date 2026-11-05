@@ -231,7 +231,7 @@
   margin: 0 0 0 calc(4 * var(--flora-grid-step-fine));
   height: calc(3 * var(--flora-grid-step) - var(--flora-grid-step-fine));
   padding: 0 calc(2 * var(--flora-grid-step));
-  border: 1px solid rgba(164, 209, 138, 0.4);
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 40%, transparent);
   border-radius: calc(2 * var(--flora-grid-step-fine));
   background: transparent;
   color: var(--flora-green-light);
@@ -244,7 +244,7 @@
 }
 
 .ownedEmptyCreateBtn:hover {
-  background: rgba(164, 209, 138, 0.1);
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent);
 }
 
 .communitiesListSection {
@@ -766,13 +766,13 @@ button.btnJoined:hover {
 }
 
 .createCommunitySubmitBtn {
-  border: 1px solid rgba(164, 209, 138, 0.4);
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 40%, transparent);
   background: transparent;
   color: var(--flora-green-light);
 }
 
 .createCommunitySubmitBtn:hover:not(:disabled) {
-  background: rgba(164, 209, 138, 0.1);
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent);
 }
 
 .createCommunityCancelBtn:disabled,
@@ -782,7 +782,7 @@ button.btnJoined:hover {
 }
 
 .createCommunitySubmitBtn:disabled {
-  border-color: rgba(164, 209, 138, 0.2);
+  border-color: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
 }
 
 .formFeedbackError {

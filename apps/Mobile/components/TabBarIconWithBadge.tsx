@@ -1,13 +1,11 @@
 import type { ReactNode } from "react";
-import type { ColorValue } from "react-native";
 import { StyleSheet, Text, View } from "react-native";
 import { liveGridStyles } from "@/lib/liveGridStyles";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { kegl, sPx } from "@/lib/floraGridRuntime";
 import { floraColors } from "@/lib/theme";
 
 type Props = {
-  color: ColorValue;
-  size: number;
   badge?: number;
   children: ReactNode;
 };
@@ -18,6 +16,9 @@ function formatBadge(count: number): string {
 }
 
 export function TabBarIconWithBadge({ badge = 0, children }: Props) {
+  // Бейдж берёт цвета из живой палитры — подписка на тему нужна здесь,
+  // иконка подписывается сама.
+  useFloraTheme();
   const showBadge = badge > 0;
 
   return (
@@ -48,12 +49,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: sPx(14),
     paddingHorizontal: sPx(3),
     borderRadius: sPx(7),
-    backgroundColor: floraColors.greenLight,
+    backgroundColor: floraColors.signal,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
-    color: "#10200e",
+    color: floraColors.bg,
     fontSize: kegl(9),
     fontWeight: "700",
     lineHeight: kegl(11),

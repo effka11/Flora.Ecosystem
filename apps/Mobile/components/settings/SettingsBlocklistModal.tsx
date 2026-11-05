@@ -140,7 +140,7 @@ export function SettingsBlocklistModal({ visible, onClose }: SettingsBlocklistMo
               value={usernameInput}
               onChangeText={setUsernameInput}
               placeholder="Юзернейм"
-              placeholderTextColor="rgba(250, 250, 250, 0.3)"
+              placeholderTextColor={floraColors.overlay(0.3)}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -284,7 +284,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
   },
   rowCopy: {
     flex: 1,

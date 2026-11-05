@@ -1,5 +1,11 @@
 "use client";
 
+import { useFloraTheme } from "@/app/_shared/FloraThemeProvider";
+import {
+  WEB_FLORA_THEME_IDS,
+  WEB_FLORA_THEMES,
+  type WebFloraThemeId,
+} from "@/lib/floraTheme";
 import { useSettings } from "./SettingsContext";
 import styles from "./settings.module.css";
 
@@ -21,6 +27,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 export function SettingsCustomizationTab() {
   const { draft, updateCustomization, clearSaveFeedback } = useSettings();
+  const { previewTheme } = useFloraTheme();
   const { customization } = draft;
   const { theme, animSpeed, enableAnimations, enableBlur } = customization;
 
@@ -29,117 +36,70 @@ export function SettingsCustomizationTab() {
     updateCustomization(next);
   };
 
+  const selectTheme = (next: WebFloraThemeId) => {
+    patch({ theme: next });
+    previewTheme(next);
+  };
+
   return (
     <div className={styles.tabContent}>
       <div className={styles.formSection}>
         <h3 className={styles.formSectionTitle}>Тема оформления</h3>
         <div className={styles.cardsGrid}>
-          <button
-            type="button"
-            className={`${styles.previewCard} ${theme === "dark" ? styles.previewCardActive : ""}`}
-            onClick={() => patch({ theme: "dark" })}
-          >
-            <div
-              className={styles.themePreviewBox}
-              style={{
-                background: "#0c0c0c",
-                borderColor: "rgba(250,250,250,0.08)",
-              }}
-            >
-              <div className={styles.themePreviewSidebar} style={{ background: "#111210", borderColor: "rgba(250,250,250,0.08)" }}>
-                <div className={styles.themePreviewLine} style={{ background: "rgba(250,250,250,0.1)" }} />
-                <div className={styles.themePreviewLine} style={{ background: "rgba(250,250,250,0.1)", width: "60%" }} />
-              </div>
-              <div className={styles.themePreviewMain}>
-                <div className={styles.themePreviewBubble} style={{ background: "#1c1d1b" }} />
-                <div className={`${styles.themePreviewBubble} ${styles.themePreviewBubbleRight}`} style={{ background: "var(--flora-green-dark)" }} />
-                <div className={styles.themePreviewBubble} style={{ background: "#1c1d1b", width: "40%" }} />
-              </div>
-            </div>
-            <div>
-              <p className={styles.previewCardTitle}>Тёмная (Flora)</p>
-              <p className={styles.previewCardDesc}>Классическая тёмная тема</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={`${styles.previewCard} ${theme === "light" ? styles.previewCardActive : ""}`}
-            onClick={() => patch({ theme: "light" })}
-          >
-            <div
-              className={styles.themePreviewBox}
-              style={{
-                background: "#f7f7f7",
-                borderColor: "rgba(0,0,0,0.1)",
-              }}
-            >
-              <div className={styles.themePreviewSidebar} style={{ background: "#ffffff", borderColor: "rgba(0,0,0,0.1)" }}>
-                <div className={styles.themePreviewLine} style={{ background: "rgba(0,0,0,0.1)" }} />
-                <div className={styles.themePreviewLine} style={{ background: "rgba(0,0,0,0.1)", width: "60%" }} />
-              </div>
-              <div className={styles.themePreviewMain}>
-                <div className={styles.themePreviewBubble} style={{ background: "#e0e0e0" }} />
-                <div className={`${styles.themePreviewBubble} ${styles.themePreviewBubbleRight}`} style={{ background: "#a4d18a" }} />
-                <div className={styles.themePreviewBubble} style={{ background: "#e0e0e0", width: "40%" }} />
-              </div>
-            </div>
-            <div>
-              <p className={styles.previewCardTitle}>Светлая</p>
-              <p className={styles.previewCardDesc}>Высокий контраст</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={`${styles.previewCard} ${theme === "midnight" ? styles.previewCardActive : ""}`}
-            onClick={() => patch({ theme: "midnight" })}
-          >
-            <div
-              className={styles.themePreviewBox}
-              style={{
-                background: "#050510",
-                borderColor: "rgba(138, 159, 209, 0.15)",
-              }}
-            >
-              <div className={styles.themePreviewSidebar} style={{ background: "#0a0a1a", borderColor: "rgba(138, 159, 209, 0.15)" }}>
-                <div className={styles.themePreviewLine} style={{ background: "rgba(138, 159, 209, 0.2)" }} />
-                <div className={styles.themePreviewLine} style={{ background: "rgba(138, 159, 209, 0.2)", width: "60%" }} />
-              </div>
-              <div className={styles.themePreviewMain}>
-                <div className={styles.themePreviewBubble} style={{ background: "#15152a" }} />
-                <div className={`${styles.themePreviewBubble} ${styles.themePreviewBubbleRight}`} style={{ background: "#4a5b8e" }} />
-                <div className={styles.themePreviewBubble} style={{ background: "#15152a", width: "40%" }} />
-              </div>
-            </div>
-            <div>
-              <p className={styles.previewCardTitle}>Полуночная</p>
-              <p className={styles.previewCardDesc}>Глубокие синие оттенки</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={`${styles.previewCard} ${theme === "system" ? styles.previewCardActive : ""}`}
-            onClick={() => patch({ theme: "system" })}
-          >
-            <div
-              className={styles.themePreviewBox}
-              style={{
-                background: "linear-gradient(135deg, #f7f7f7 50%, #0c0c0c 50%)",
-                borderColor: "rgba(128,128,128,0.2)",
-              }}
-            >
-              <div className={styles.themePreviewSidebar} style={{ background: "transparent", borderColor: "transparent" }}>
-                <div className={styles.themePreviewLine} style={{ background: "rgba(128,128,128,0.3)" }} />
-                <div className={styles.themePreviewLine} style={{ background: "rgba(128,128,128,0.3)", width: "60%" }} />
-              </div>
-            </div>
-            <div>
-              <p className={styles.previewCardTitle}>Системная</p>
-              <p className={styles.previewCardDesc}>Синхронизация с ОС</p>
-            </div>
-          </button>
+          {WEB_FLORA_THEME_IDS.map((themeId) => {
+            const meta = WEB_FLORA_THEMES[themeId];
+            return (
+              <button
+                key={themeId}
+                type="button"
+                className={`${styles.previewCard} ${theme === themeId ? styles.previewCardActive : ""}`}
+                onClick={() => selectTheme(themeId)}
+              >
+                <div className={`${styles.themePreviewBox} ${meta.previewClassName}`}>
+                  <div
+                    className={styles.themePreviewSidebar}
+                    style={{
+                      background: "var(--flora-reserve-surface-them)",
+                      borderColor: "rgba(var(--flora-white-template-rgb), 0.08)",
+                    }}
+                  >
+                    <div
+                      className={styles.themePreviewLine}
+                      style={{ background: "rgba(var(--flora-white-template-rgb), 0.1)" }}
+                    />
+                    <div
+                      className={styles.themePreviewLine}
+                      style={{
+                        background: "rgba(var(--flora-white-template-rgb), 0.1)",
+                        width: "60%",
+                      }}
+                    />
+                  </div>
+                  <div className={styles.themePreviewMain}>
+                    <div
+                      className={styles.themePreviewBubble}
+                      style={{ background: "var(--flora-reserve-substrate-gray-muted)" }}
+                    />
+                    <div
+                      className={`${styles.themePreviewBubble} ${styles.themePreviewBubbleRight}`}
+                      style={{ background: "var(--flora-accent-dark)" }}
+                    />
+                    <div
+                      className={styles.themePreviewBubble}
+                      style={{
+                        background: "var(--flora-reserve-substrate-gray-muted)",
+                        width: "40%",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className={styles.previewCardTitle}>{meta.label}</p>
+                  <p className={styles.previewCardDesc}>{meta.description}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -1,4 +1,6 @@
 import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { useFloraThemeDraft } from "@/lib/useFloraThemeDraft";
+import { useFloraThemeRefresh } from "@/lib/useFloraThemeRefresh";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "expo-router/react-navigation";
@@ -275,8 +277,17 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "customization",
     label: "Кастомизация",
-    description: "Тема, язык и оформление интерфейса.",
-    keywords: ["тема", "язык", "оформление", "кастомизация", "акцент", "шрифт"],
+    description: "Тема оформления интерфейса.",
+    keywords: [
+      "тема",
+      "тёмная",
+      "темная",
+      "светлая",
+      "flora",
+      "старая",
+      "оформление",
+      "кастомизация",
+    ],
   },
 ] as const;
 
@@ -309,10 +320,13 @@ function contentSearchQueryForSection(section: SettingsSection, search: string):
 const SettingsTabContent = memo(function SettingsTabContent({
   activeSection,
   searchQuery,
+  isActive,
 }: {
   activeSection: SettingsSectionId;
   searchQuery: string;
+  isActive: boolean;
 }) {
+  useFloraThemeRefresh(isActive);
   switch (activeSection) {
     case "privacy":
       return <PrivacySettingsTab searchQuery={searchQuery} />;
@@ -366,6 +380,7 @@ const SettingsSectionPage = memo(function SettingsSectionPage({
         <SettingsTabContent
           activeSection={section.id}
           searchQuery={contentSearchQueryForSection(section, search)}
+          isActive={isActive}
         />
       </GestureScrollView>
     </View>
@@ -382,7 +397,9 @@ export default function SettingsScreen() {
   const syncSettingsFromMe = useSettingsDraftStore((s) => s.syncFromMe);
   const loadPrivacySettings = useSettingsDraftStore((s) => s.loadPrivacy);
   const loadFeedSettings = useSettingsDraftStore((s) => s.loadFeed);
-  const settingsDirty = useSettingsDraftStore((s) => s.dirty);
+  const draftDirty = useSettingsDraftStore((s) => s.dirty);
+  const { previewThemeId, commitTheme, discardTheme } = useFloraThemeDraft();
+  const settingsDirty = draftDirty || previewThemeId !== null;
   const settingsSaving = useSettingsDraftStore((s) => s.saving);
   const settingsSaveError = useSettingsDraftStore((s) => s.saveError);
   const saveAllSettings = useSettingsDraftStore((s) => s.saveAll);
@@ -408,6 +425,16 @@ export default function SettingsScreen() {
     void loadFeedSettings();
   }, [loadFeedSettings]);
 
+  // Уход с экрана без сохранения возвращает тему, которая была на диске.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        // Пока идёт сохранение, тема уже фиксируется обработчиком save — не откатываем её.
+        if (!useSettingsDraftStore.getState().saving) discardTheme();
+      };
+    }, [discardTheme]),
+  );
+
   const onRequestSaveSettings = useCallback(() => {
     if (!settingsDirty || settingsSaving) return;
     clearSettingsSaveFeedback();
@@ -429,14 +456,20 @@ export default function SettingsScreen() {
   const onConfirmSettingsAction = useCallback(() => {
     if (confirmKind === "discard") {
       discardSettingsChanges();
+      discardTheme();
       setConfirmKind(null);
       return;
     }
     if (confirmKind !== "save") return;
-    void saveAllSettings().then((result) => {
-      if (result.ok) setConfirmKind(null);
+    const draftsDirty = useSettingsDraftStore.getState().dirty;
+    const savePromise = draftsDirty ? saveAllSettings() : Promise.resolve({ ok: true });
+    void savePromise.then((result) => {
+      if (result.ok) {
+        commitTheme();
+        setConfirmKind(null);
+      }
     });
-  }, [confirmKind, discardSettingsChanges, saveAllSettings]);
+  }, [commitTheme, confirmKind, discardSettingsChanges, discardTheme, saveAllSettings]);
   const [tabLayouts, setTabLayouts] = useState<Partial<Record<SettingsSectionId, TabLayout>>>({});
   const [tabsViewportW, setTabsViewportW] = useState(0);
   const [tabsContentW, setTabsContentW] = useState(0);
@@ -1298,7 +1331,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   tabsScrollWrap: {
     position: "relative",
     overflow: "hidden",
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
     borderBottomWidth: 1,
     backgroundColor: floraColors.bg,
   },

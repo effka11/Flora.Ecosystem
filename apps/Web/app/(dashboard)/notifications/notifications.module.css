@@ -7,9 +7,7 @@
   --search-width: calc((89 - 38 + 1) * var(--flora-grid-step));
   --search-height: calc((5 - 3 + 1) * var(--flora-grid-step));
   --flora-bg-base: var(--flora-bg);
-  --flora-accent: var(--flora-green-light);
   --flora-accent-hover: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
-  --flora-on-accent: #10200e;
   --flora-text-primary: var(--flora-white-template);
   display: flex;
   flex-direction: column;
@@ -350,13 +348,13 @@
 }
 
 .notificationIconLike {
-  background: rgba(249, 24, 128, 0.15);
-  color: #f91880;
+  background: color-mix(in srgb, var(--flora-like) 15%, transparent);
+  color: var(--flora-like);
 }
 
 .notificationIconReply {
-  background: rgba(164, 209, 138, 0.2);
-  color: #a4d18a;
+  background: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
+  color: var(--flora-green-light);
 }
 
 .notificationIconDefault {
@@ -453,7 +451,7 @@
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--flora-bg) 92%, #1c1c1c 8%);
+  background: color-mix(in srgb, var(--flora-bg) 92%, #171718 8%);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   border-radius: var(--flora-sPx-16);
   box-shadow: 0 var(--flora-sPx-24) calc(1px * round(48 * var(--flora-grid-s))) rgba(0, 0, 0, 0.5);

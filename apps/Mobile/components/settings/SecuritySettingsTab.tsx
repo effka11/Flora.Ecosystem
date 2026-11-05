@@ -555,7 +555,7 @@ export function SecuritySettingsTab({ searchQuery }: Props) {
     }
   };
 
-  const ph = "rgba(250, 250, 250, 0.3)";
+  const ph = floraColors.overlay(0.3);
 
   return (
     <View style={ui.tabBody}>

@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteAllNotifications,
@@ -52,6 +53,7 @@ function emptyMessage(activeTab: number, hasSearch: boolean): string {
 const EMPTY_NOTIFICATIONS: NotificationDto[] = [];
 
 export default function NotificationsScreen() {
+  useFloraTheme();
   const sp = useSPx();
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
