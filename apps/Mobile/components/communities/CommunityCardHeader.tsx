@@ -182,7 +182,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   privateBadge: {
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.35)",
+    borderColor: floraColors.overlay(0.35),
     borderRadius: floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.gridFine * 2,
     paddingVertical: sPx(2),
@@ -223,7 +223,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surface,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.12)",
+    borderColor: floraColors.overlay(0.12),
     overflow: "hidden",
   },
   modalHeader: {

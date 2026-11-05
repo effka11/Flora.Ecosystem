@@ -137,7 +137,17 @@ export function OnlineStatusDot({
       pointerEvents="none"
       accessibilityElementsHidden={!online}
       importantForAccessibility="no-hide-descendants"
-      style={[styles.dot, layout, style, { opacity, transform: [{ scale: scaleAnim }] }]}
+      style={[
+        styles.dot,
+        layout,
+        style,
+        {
+          opacity,
+          transform: [{ scale: scaleAnim }],
+          backgroundColor: floraColors.greenLight,
+          borderColor: floraColors.bg,
+        },
+      ]}
     />
   );
 }
@@ -145,7 +155,5 @@ export function OnlineStatusDot({
 const styles = StyleSheet.create({
   dot: {
     position: "absolute",
-    backgroundColor: floraColors.greenLight,
-    borderColor: floraColors.bg,
   },
 });

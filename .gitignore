@@ -115,3 +115,8 @@ polygon-out*/
 polygon-*.log
 # Кэш бинарей энкодера для A/B-итераций (--reuse): локальный, не в remote
 .polygon-bin/
+
+# Playwright MCP: скриншоты, снимки страниц и console-логи прогонов
+**/.playwright-mcp/
+# Дев-лог проверки темы apps/Web
+theme-dev.log

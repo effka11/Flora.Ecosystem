@@ -4,6 +4,8 @@ import {
   type GridTemplate
 } from "@flora/client-core/display";
 import { sPx as designSPx } from "@flora/design";
+import { createKeyedLiveValue } from "@/lib/liveCache";
+import { setFloraRuntimeGridKey } from "@/lib/runtimeCacheVersion";
 
 /** Extra-grid px at the given `s`, or the live Mobile `s` when omitted. */
 export function sPx(n: number, s: number = getFloraGridRuntime().s): number {
@@ -33,6 +35,7 @@ const fallback: FloraGridRuntime = {
 };
 
 let current: FloraGridRuntime = fallback;
+setFloraRuntimeGridKey(fallback.step, fallback.stepFine);
 
 export function getFloraGridRuntime(): FloraGridRuntime {
   return current;
@@ -40,6 +43,7 @@ export function getFloraGridRuntime(): FloraGridRuntime {
 
 export function setFloraGridRuntime(next: FloraGridRuntime): void {
   current = next;
+  setFloraRuntimeGridKey(next.step, next.stepFine);
 }
 
 export function floraGridRuntimeFromTemplate(template: GridTemplate): FloraGridRuntime {
@@ -52,36 +56,5 @@ export function floraGridRuntimeFromTemplate(template: GridTemplate): FloraGridR
 }
 
 export function liveGridRecord<T extends object>(factory: () => T): T {
-  let cachedKey = "";
-  let cached: T | undefined;
-
-  const resolve = (): T => {
-    const key = `${getFloraGridRuntime().step}:${getFloraGridRuntime().stepFine}`;
-    if (cached && key === cachedKey) {
-      return cached;
-    }
-    cachedKey = key;
-    cached = factory();
-    return cached;
-  };
-
-  return new Proxy({} as T, {
-    get(_target, prop) {
-      return (resolve() as Record<PropertyKey, unknown>)[prop];
-    },
-    ownKeys() {
-      return Reflect.ownKeys(resolve() as object);
-    },
-    getOwnPropertyDescriptor(_target, prop) {
-      return Object.getOwnPropertyDescriptor(resolve() as object, prop);
-    },
-    has(_target, prop) {
-      return prop in (resolve() as object);
-    },
-    // StyleSheet.create freezes style objects in dev. Accepting that on an
-    // empty target makes the next ownKeys throw for the rest of the session.
-    preventExtensions() {
-      return false;
-    }
-  });
+  return createKeyedLiveValue(factory);
 }

@@ -9,15 +9,15 @@ export const FLORA_DEFAULT_COVERS: FloraDefaultCover[] = [
   { id: "ember", color: "#5c423c" },
   { id: "clay", color: "#7a5c45" },
   { id: "ochre", color: "#655c38" },
-  { id: "forest", color: "#2c3527" },
+  { id: "forest", color: "#303132" },
   { id: "slate", color: "#3d4a5c" },
   { id: "dusk", color: "#4a3d5a" },
   { id: "ink", color: "#1a1a22" },
 ];
 
-/** Тёмно-зелёный фон базового аватара (совпадает с --flora-green-dark). */
+/** Графитовый фон базового аватара (совпадает с --flora-accent-dark). */
 export const FLORA_DEFAULT_AVATAR_COLOR_ID = "forest";
-export const FLORA_DEFAULT_AVATAR_COLOR = "#2c3527";
+export const FLORA_DEFAULT_AVATAR_COLOR = "#303132";
 
 export const FLORA_DEFAULT_COVER_ID = "forest";
 

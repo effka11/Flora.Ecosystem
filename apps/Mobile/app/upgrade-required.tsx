@@ -1,8 +1,10 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { floraColors, kegl, sPx } from "@/lib/theme";
 
 export default function UpgradeRequiredScreen() {
+  useFloraTheme();
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Требуется обновление</Text>

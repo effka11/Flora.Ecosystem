@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { authStyles } from "./styles";
 
 const LOGO_LETTERS: { ch: string; idGap?: boolean }[] = [
@@ -7,6 +8,7 @@ const LOGO_LETTERS: { ch: string; idGap?: boolean }[] = [
 ];
 
 export function AuthLogo() {
+  useFloraTheme();
   return (
     <View style={authStyles.logoRow} accessibilityRole="header" accessibilityLabel="FLORA ID">
       {LOGO_LETTERS.map(({ ch, idGap }, index) => (

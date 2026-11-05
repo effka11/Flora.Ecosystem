@@ -303,12 +303,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
-    backgroundColor: "rgba(250, 250, 250, 0.03)",
+    borderColor: floraColors.overlay(0.08),
+    backgroundColor: floraColors.overlay(0.03),
   },
   iconCellActive: {
-    borderColor: "rgba(164, 209, 138, 0.45)",
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
+    borderColor: floraColors.overlay(0.45),
+    backgroundColor: floraColors.overlay(0.12),
   },
   userList: {
     gap: floraSpacing.gridFine,
@@ -324,8 +324,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderColor: "transparent",
   },
   userRowSelected: {
-    borderColor: "rgba(164, 209, 138, 0.28)",
-    backgroundColor: "rgba(164, 209, 138, 0.08)",
+    borderColor: floraColors.overlay(0.28),
+    backgroundColor: floraColors.overlay(0.08),
   },
   userMeta: {
     flex: 1,

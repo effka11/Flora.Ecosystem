@@ -302,7 +302,7 @@ export function NotificationsSettingsTab({ searchQuery }: Props) {
                         value={notifications.quietFrom}
                         onChangeText={(raw) => patch({ quietFrom: maskQuietTimeInput(raw) })}
                         placeholder="23:00"
-                        placeholderTextColor="rgba(250, 250, 250, 0.3)"
+                        placeholderTextColor={floraColors.overlay(0.3)}
                         keyboardType="number-pad"
                         maxLength={5}
                       />
@@ -314,7 +314,7 @@ export function NotificationsSettingsTab({ searchQuery }: Props) {
                         value={notifications.quietTo}
                         onChangeText={(raw) => patch({ quietTo: maskQuietTimeInput(raw) })}
                         placeholder="08:00"
-                        placeholderTextColor="rgba(250, 250, 250, 0.3)"
+                        placeholderTextColor={floraColors.overlay(0.3)}
                         keyboardType="number-pad"
                         maxLength={5}
                       />

@@ -92,7 +92,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     width: floraSpacing.grid * 3,
     height: floraSpacing.grid * 3,
     borderRadius: (floraSpacing.grid * 3) / 2,
-    backgroundColor: "rgba(164, 209, 138, 0.15)",
+    backgroundColor: floraColors.overlay(0.15),
     alignItems: "center",
     justifyContent: "center",
   },

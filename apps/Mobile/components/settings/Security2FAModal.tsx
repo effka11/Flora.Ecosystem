@@ -27,7 +27,7 @@ type Props = {
   onChanged: () => void;
 };
 
-const PH = "rgba(250, 250, 250, 0.3)";
+
 
 export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props) {
   const sp = useSPx();
@@ -122,7 +122,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
                 placeholder="Пароль"
                 secureTextEntry
                 editable={!busy}
-                placeholderTextColor={PH}
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
               <TextInput
                 style={ui.input}
@@ -131,7 +131,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
                 placeholder="Код 2FA"
                 keyboardType="number-pad"
                 editable={!busy}
-                placeholderTextColor={PH}
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
               <Pressable
                 style={({ pressed }) => [ui.dangerButton, pressed && ui.pressed]}
@@ -164,7 +164,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
                 placeholder="Код из приложения"
                 keyboardType="number-pad"
                 editable={!busy}
-                placeholderTextColor={PH}
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
               <View style={ui.formActionsRow}>
                 <Pressable
@@ -199,7 +199,7 @@ export function Security2FAModal({ visible, enabled, onClose, onChanged }: Props
                 placeholder="Пароль"
                 secureTextEntry
                 editable={!busy}
-                placeholderTextColor={PH}
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
               <Pressable
                 style={({ pressed }) => [ui.softPrimaryButton, pressed && ui.pressed]}

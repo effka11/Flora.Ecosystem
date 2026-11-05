@@ -14,9 +14,9 @@ import { formatNotificationTimeAgoRu } from "@/lib/formatNotificationTimeAgoRu";
 import { cancelInteractiveApkUpdate, runUserUpdateFromNotification } from "@/lib/apkUpdate";
 import type { ApkUpdateProgress } from "@/lib/apkUpdate/progress";
 import { isAppUpdateNotificationInstalled } from "@/lib/appLinks";
-import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import { useSPx } from "@/lib/FloraGridProvider";
-import { floraColors, floraFeedPost, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
+import { floraColors, floraFeedPost, floraSpacing, floraTokens, kegl, sPx, tracking } from "@/lib/theme";
 
 type NotificationRowProps = {
   item: NotificationDto;
@@ -40,18 +40,19 @@ function iconColorsForType(type: string) {
     return { bg: "rgba(249, 24, 128, 0.15)", color: "#f91880" };
   }
   if (type === "reply" || type === "follow") {
-    return { bg: FLORA_THEME_TOKENS.accentGreenOverlay20, color: floraColors.greenLight };
+    return { bg: floraTokens.accentGreenOverlay20, color: floraColors.greenLight };
   }
   if (type === "app_update") {
-    return { bg: FLORA_THEME_TOKENS.accentGreenOverlay20, color: floraColors.greenLight };
+    return { bg: floraTokens.accentGreenOverlay20, color: floraColors.greenLight };
   }
   if (type === "developer") {
     return { bg: "rgba(29, 155, 240, 0.15)", color: "#1d9bf0" };
   }
-  return { bg: "rgba(255, 255, 255, 0.08)", color: "rgba(250, 250, 250, 0.7)" };
+  return { bg: floraColors.overlay(0.08), color: floraColors.overlay(0.7) };
 }
 
 export function NotificationRow({ item, onPress }: NotificationRowProps) {
+  useFloraTheme();
   const sp = useSPx();
   const iconName = iconForType(item.type);
   const iconColors = iconColorsForType(item.type);
@@ -222,7 +223,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    borderBottomColor: "rgba(250, 250, 250, 0.06)",
+    borderBottomColor: floraColors.overlay(0.06),
     borderBottomWidth: 1,
   },
   item: {
@@ -240,10 +241,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingRight: floraSpacing.gridFine,
   },
   itemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.04)",
+    backgroundColor: floraColors.overlay(0.04),
   },
   itemUnread: {
-    backgroundColor: "rgba(164, 209, 138, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   iconWrap: {
     width: ICON_SIZE(),

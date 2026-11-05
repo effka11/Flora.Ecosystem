@@ -1,15 +1,17 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { StyleSheet, View } from "react-native";
 import { floraColors } from "@/lib/theme";
 
 /**
- * Фон нижнего tab bar — сплошной чёрный с верхней линией,
+ * Фон нижнего tab bar — сплошной цвет активной темы с верхней линией,
  * как у topBlock (borderBottom на шапке).
  */
 export function FloraTabBarBackground() {
+  useFloraTheme();
   return (
     <View style={styles.root} pointerEvents="none">
-      <View style={styles.fill} />
-      <View style={styles.hairline} />
+      <View style={[styles.fill, { backgroundColor: floraColors.bg }]} />
+      <View style={[styles.hairline, { backgroundColor: floraColors.hairline }]} />
     </View>
   );
 }
@@ -20,7 +22,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: floraColors.bg,
   },
   hairline: {
     position: "absolute",
@@ -28,6 +29,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: "rgba(250, 250, 250, 0.08)",
   },
 });

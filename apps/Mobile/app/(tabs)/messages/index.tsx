@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiDeleteConversation,
@@ -255,6 +256,7 @@ const GROUPS_STALE_REFETCH_MS = 15_000;
 const FOCUS_REFRESH_DELAY_MS = 200;
 
 export default function MessagesScreen() {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const sp = useSPx();
   const navigation = useNavigation();
@@ -1401,7 +1403,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
     backgroundColor: floraColors.bg,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     padding: floraSpacing.gridFine * 1.5,
     overflow: "hidden",
     shadowColor: "#000",
@@ -1420,7 +1422,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   createMenuItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   createMenuItemIcon: {
     width: sPx(24),
@@ -1430,7 +1432,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   createMenuLabel: {
     flex: 1,
-    color: "rgba(250, 250, 250, 0.9)",
+    color: floraColors.overlay(0.9),
     fontSize: kegl(14),
     fontWeight: "400",
     letterSpacing: tracking(0.42),

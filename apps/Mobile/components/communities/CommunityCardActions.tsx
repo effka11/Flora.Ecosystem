@@ -115,12 +115,12 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.4)",
+    borderColor: floraColors.overlay(0.4),
     borderRadius: floraSpacing.gridFine * 2,
     backgroundColor: "transparent",
   },
   btnPressed: {
-    backgroundColor: "rgba(164, 209, 138, 0.1)",
+    backgroundColor: floraColors.overlay(0.1),
   },
   btnBusy: {
     opacity: 0.6,

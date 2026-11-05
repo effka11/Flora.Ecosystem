@@ -19,8 +19,6 @@ const COPY: Record<
   SettingsConfirmKind,
   {
     icon: keyof typeof Ionicons.glyphMap;
-    iconColor: string;
-    iconBg: string;
     title: string;
     body: string;
     confirmLabel: string;
@@ -30,8 +28,6 @@ const COPY: Record<
 > = {
   save: {
     icon: "checkmark-circle-outline",
-    iconColor: floraColors.greenLight,
-    iconBg: "rgba(164, 209, 138, 0.15)",
     title: "Сохранить изменения?",
     body: "Несохранённые настройки будут применены.",
     confirmLabel: "Сохранить",
@@ -40,8 +36,6 @@ const COPY: Record<
   },
   discard: {
     icon: "close-circle-outline",
-    iconColor: "#f6a8a8",
-    iconBg: "rgba(246, 168, 168, 0.15)",
     title: "Сбросить изменения?",
     body: "Несохранённые правки будут отменены.",
     confirmLabel: "Сбросить",
@@ -62,6 +56,8 @@ export function SettingsConfirmModal({
   const sp = useSPx();
   if (!kind) return null;
   const copy = COPY[kind];
+  const iconColor = kind === "save" ? floraColors.greenLight : "#f6a8a8";
+  const iconBg = kind === "save" ? floraColors.overlay(0.15) : "rgba(246, 168, 168, 0.15)";
 
   return (
     <Modal
@@ -78,11 +74,11 @@ export function SettingsConfirmModal({
           accessibilityLabel="Закрыть"
         />
         <View style={styles.card} accessibilityViewIsModal>
-          <View style={[styles.iconWrap, { backgroundColor: copy.iconBg }]}>
+          <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
             {busy ? (
-              <ActivityIndicator color={copy.iconColor} />
+              <ActivityIndicator color={iconColor} />
             ) : (
-              <Ionicons name={copy.icon} size={sp(28)} color={copy.iconColor} />
+              <Ionicons name={copy.icon} size={sp(28)} color={iconColor} />
             )}
           </View>
 

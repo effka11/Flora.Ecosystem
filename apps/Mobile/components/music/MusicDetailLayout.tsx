@@ -61,7 +61,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingBottom: floraSpacing.gridFine * 2,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
     backgroundColor: floraColors.bg,
   },
   backBtn: {

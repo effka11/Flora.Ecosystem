@@ -1,4 +1,5 @@
 import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useRecyclingState } from "@shopify/flash-list";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
@@ -216,6 +217,7 @@ export const ExpandablePostText = memo(function ExpandablePostText({
   textStyle,
 }: ExpandablePostTextProps) {
   useFloraGrid();
+  useFloraTheme();
   const layoutText = useMemo(() => trimTrailingEmptyLines(text), [text]);
   const collapsedLines = hasMedia ? COLLAPSED_WITH_MEDIA_LINES : COLLAPSED_TEXT_LINES;
   const expandChunkLines = hasMedia ? EXPAND_CHUNK_WITH_MEDIA_LINES : EXPAND_CHUNK_TEXT_LINES;

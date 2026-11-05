@@ -66,6 +66,7 @@
     "flora-frc-i": "file:./modules/flora-frc-i",
     "flora-scroll-fling": "file:./modules/flora-scroll-fling",
     "flora-secure-push": "file:./modules/flora-secure-push",
+    "flora-theme-crossfade": "file:./modules/flora-theme-crossfade",
     "libphonenumber-js": "^1.13.10",
     "react": "19.2.3",
     "react-dom": "19.2.3",

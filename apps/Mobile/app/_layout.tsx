@@ -3,27 +3,27 @@ import "@/lib/api";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Modal } from "react-native";
+import { enableFreeze } from "react-native-screens";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AccountBlockedWall } from "@/components/AccountBlockedWall";
 import { FloraProviders } from "@/providers/FloraProviders";
-import { floraColors } from "@/lib/theme";
+import { FloraThemeProvider, useFloraTheme } from "@/lib/FloraThemeProvider";
+import { floraColors, floraNativeStackOptions } from "@/lib/theme";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export { ErrorBoundary } from "expo-router";
 
-export default function RootLayout() {
+enableFreeze(true);
+
+function RootContent() {
+  const { themeId } = useFloraTheme();
   const accountBlocked = useSessionStore((s) => s.me?.accountBlocked === true);
+  const statusBarStyle = themeId === "light" ? "dark" : "light";
 
   return (
-    <FloraProviders>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: floraColors.surface },
-          headerTintColor: floraColors.text,
-          contentStyle: { backgroundColor: floraColors.bg },
-        }}
-      >
+    <>
+      <StatusBar style={statusBarStyle} />
+      <Stack screenOptions={{ ...floraNativeStackOptions }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -44,11 +44,21 @@ export default function RootLayout() {
           onRequestClose={() => undefined}
         >
           <SafeAreaProvider style={{ flex: 1, backgroundColor: floraColors.bg }}>
-            <StatusBar style="light" />
+            <StatusBar style={statusBarStyle} />
             <AccountBlockedWall />
           </SafeAreaProvider>
         </Modal>
       ) : null}
-    </FloraProviders>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <FloraThemeProvider>
+      <FloraProviders>
+        <RootContent />
+      </FloraProviders>
+    </FloraThemeProvider>
   );
 }

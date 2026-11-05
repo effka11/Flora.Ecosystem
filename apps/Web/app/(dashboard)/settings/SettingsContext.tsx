@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useCurrentUser } from "@/app/_dashboard/CurrentUserContext";
+import { useFloraTheme } from "@/app/_shared/FloraThemeProvider";
 import {
   ApiRequestError,
   apiGetPrivacySettings,
@@ -60,6 +61,7 @@ const EMPTY_DRAFT = userSettingsDraftFromSources(
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const { me, loading, refresh } = useCurrentUser();
+  const { commitTheme, discardPreview } = useFloraTheme();
   const userIdRef = useRef<string | null>(null);
   const [savedLocalPrefs, setSavedLocalPrefs] = useState<UserSettingsLocalPrefs>(() => loadUserSettingsLocalPrefs());
   const [savedPrivacy, setSavedPrivacy] = useState<UserSettingsPrivacyDraft>(() => defaultPrivacyDraft());
@@ -153,7 +155,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setDraft(userSettingsDraftFromSources(me, prefs, savedPrivacy, savedFeed));
     setSaveError(null);
     setSaveSuccess(null);
-  }, [me, savedPrivacy, savedFeed]);
+    discardPreview();
+  }, [discardPreview, me, savedPrivacy, savedFeed]);
 
   const hasUnsavedChanges =
     Boolean(me) && userSettingsDraftHasChanges(draft, me!, savedLocalPrefs, savedPrivacy, savedFeed);
@@ -209,6 +212,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSavedLocalPrefs(localPrefs);
       }
 
+      commitTheme(localPrefs.customization.theme);
+
       const nextAccount = accountChanged
         ? {
             displayName: accountPayload.displayName,
@@ -235,9 +240,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setSaving(false);
     }
-  }, [draft, me, refresh, savedLocalPrefs, savedPrivacy, savedFeed, saving]);
+  }, [commitTheme, draft, me, refresh, savedLocalPrefs, savedPrivacy, savedFeed, saving]);
 
   const ready = Boolean(me && !loading);
+
+  useEffect(
+    () => () => {
+      discardPreview();
+    },
+    [discardPreview],
+  );
 
   return (
     <SettingsContext.Provider

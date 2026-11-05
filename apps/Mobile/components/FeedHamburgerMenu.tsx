@@ -64,14 +64,14 @@ import {
 } from "@/lib/drawerMomentum";
 import { eligibleVerticalFling } from "@/lib/drawerFlingPolicy";
 import { useSPx } from "@/lib/FloraGridProvider";
-import { floraColors, floraMotion, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
+import { floraColors, floraMotion, floraSpacing, floraTokens, kegl, sPx, tracking } from "@/lib/theme";
 import {
   isHamburgerTabPathActive,
   requestTabRouteCover,
   requestTabRouteReveal,
   tabNameFromHamburgerTarget,
 } from "@/lib/tabRouteCover";
-import { FLORA_THEME_TOKENS } from "@flora/client-core/display";
 import Svg, { G, Path, Rect } from "react-native-svg";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -195,6 +195,7 @@ type Props = {
  * edge-drag — иначе setState на onStart даёт кадр лага под пальцем.
  */
 export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props) {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const pathname = usePathname();
@@ -650,12 +651,12 @@ export function FeedHamburgerMenu({ visible, onOpen, onClose, children }: Props)
                     viewBox="0 0 1024 1024"
                     style={styles.logoMarkSvg}
                   >
-                    <Rect width="1024" height="1024" fill={FLORA_THEME_TOKENS.accentGreenOverlay20} />
+                    <Rect width="1024" height="1024" fill={floraTokens.accentGreenOverlay20} />
                     <G transform="matrix(0.88713921, 0, 0, 0.88713921, 42.574128, 58.006452)">
                       <Path
                         d={FLORA_LOGO_MARK_D}
-                        fill="#a1cd87"
-                        stroke="#a1cd87"
+                        fill={floraColors.greenLight}
+                        stroke={floraColors.greenLight}
                         strokeWidth={0.5}
                         strokeLinejoin="round"
                         strokeLinecap="round"
@@ -738,7 +739,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: "100%",
     backgroundColor: floraColors.bg,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(250, 250, 250, 0.06)",
+    borderRightColor: floraColors.overlay(0.06),
     paddingLeft: MENU_EDGE_INSET(),
     paddingRight: MENU_EDGE_INSET(),
     justifyContent: "flex-start",
@@ -759,7 +760,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     height: MENU_LEAD_COL(),
     borderRadius: 2 * floraSpacing.gridFine,
     overflow: "hidden",
-    backgroundColor: FLORA_THEME_TOKENS.accentGreenOverlay20,
+    backgroundColor: floraTokens.accentGreenOverlay20,
   },
   logoMarkSvg: {
     backgroundColor: "transparent",
@@ -784,7 +785,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(12),
   },
   navItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   navIconWrap: {
     width: MENU_LEAD_COL(),

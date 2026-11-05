@@ -245,7 +245,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginTop: floraSpacing.grid,
   },
   empty: {
-    color: "rgba(250, 250, 250, 0.35)",
+    color: floraColors.overlay(0.35),
     fontSize: kegl(13),
     fontWeight: "300",
     marginBottom: floraSpacing.gridFine,
@@ -256,7 +256,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     gap: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(250, 250, 250, 0.06)",
+    borderBottomColor: floraColors.overlay(0.06),
   },
   rowCopy: {
     flex: 1,
@@ -279,7 +279,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
+    backgroundColor: floraColors.overlay(0.12),
   },
   actionText: {
     color: floraColors.greenLight,

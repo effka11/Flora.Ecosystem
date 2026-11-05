@@ -197,7 +197,7 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
                 value={account.displayName}
                 onChangeText={(value) => updateAccount({ displayName: value })}
                 autoComplete="name"
-                placeholderTextColor="rgba(250, 250, 250, 0.3)"
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
             </View>
             <View style={ui.fieldGroup}>
@@ -211,7 +211,7 @@ export function AccountSettingsTab({ searchQuery }: AccountSettingsTabProps) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="username"
-                placeholderTextColor="rgba(250, 250, 250, 0.3)"
+                placeholderTextColor={floraColors.overlay(0.3)}
               />
             </View>
             <BirthDateField

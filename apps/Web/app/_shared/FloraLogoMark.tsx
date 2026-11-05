@@ -4,7 +4,7 @@ import styles from "./floraLogoMark.module.css";
 export function FloraLogoMark() {
   return (
     <span className={styles.mark} aria-hidden>
-      <img src="/logo-mark.svg" alt="" />
+      <span className={styles.markGlyph} />
     </span>
   );
 }

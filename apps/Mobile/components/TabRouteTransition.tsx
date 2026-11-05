@@ -1,4 +1,5 @@
 import { getActiveTabRouteKey, getActiveTabRouteName } from "@/lib/getActiveTabRouteKey";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { ENERGETIC_OPEN_EASING, ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 import { floraRouteTransitionClearMs } from "@/lib/floraRouteEnterFade";
 import { bindRouteTransitionBusy } from "@/lib/routeTransitionBusy";
@@ -20,8 +21,32 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
+  type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
+
+/**
+ * Полотно раскрытия вкладки. Отдельный компонент, чтобы смена темы
+ * перерисовывала только его, а не весь навигатор.
+ */
+function TabRouteRevealOverlay({
+  bottom,
+  opacityStyle,
+}: {
+  bottom: number;
+  opacityStyle: AnimatedStyle<Record<string, unknown>>;
+}) {
+  useFloraTheme();
+  return (
+    <Animated.View
+      collapsable={false}
+      needsOffscreenAlphaCompositing
+      pointerEvents="none"
+      renderToHardwareTextureAndroid
+      style={[styles.overlay, { bottom, backgroundColor: floraColors.bg }, opacityStyle]}
+    />
+  );
+}
 
 /** Reveal overlay 1→0 — та же длительность и ease-out, что тап подвкладок. */
 function runFloraRouteRevealFade(
@@ -197,15 +222,7 @@ export function useTabRouteTransition(
     opacity: overlayOpacity.value,
   }));
 
-  const overlay = (
-    <Animated.View
-      collapsable={false}
-      needsOffscreenAlphaCompositing
-      pointerEvents="none"
-      renderToHardwareTextureAndroid
-      style={[styles.overlay, { bottom: overlayBottom }, overlayStyle]}
-    />
-  );
+  const overlay = <TabRouteRevealOverlay bottom={overlayBottom} opacityStyle={overlayStyle} />;
 
   return { screenListeners, overlay };
 }
@@ -216,7 +233,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: floraColors.bg,
     zIndex: 10,
   },
 });

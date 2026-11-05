@@ -100,7 +100,7 @@
   top: calc(2 * var(--flora-grid-step));
   width: 100%;
   height: var(--profile-cover-h);
-  background: #2c3527;
+  background: var(--flora-green-dark);
   border-radius: var(--flora-sPx-12);
 }
 
@@ -324,14 +324,14 @@
   box-sizing: border-box;
   color: var(--flora-green-light);
   background: transparent;
-  border: 1px solid rgba(164, 209, 138, 0.4);
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 40%, transparent);
   border-radius: calc(2 * var(--flora-grid-step-fine));
   cursor: pointer;
   transition: background 0.15s ease, text-shadow 0.2s ease;
 }
 
 .profileActionBtn:hover {
-  background: rgba(164, 209, 138, 0.1);
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent);
 }
 
 /* Вторичная кнопка (Написать, Отписаться) */
@@ -371,7 +371,7 @@
 
 .profileDetailsTrigger:hover {
   color: var(--flora-green-light);
-  border-color: rgba(164, 209, 138, 0.3);
+  border-color: color-mix(in srgb, var(--flora-green-light) 30%, transparent);
 }
 
 .profileDetailsTriggerIcon {
@@ -443,7 +443,7 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--flora-grid-step);
-  background: color-mix(in srgb, var(--flora-bg) 92%, #1e1e1e 8%);
+  background: color-mix(in srgb, var(--flora-bg) 92%, #171718 8%);
   border: 1px solid rgba(var(--flora-white-template-rgb), 0.12);
   animation: profileModalDialogIn 0.25s ease-out;
 }
@@ -628,7 +628,7 @@
 }
 
 .profileEditError {
-  color: #c98a7a;
+  color: var(--flora-signal);
   font-size: max(1px, var(--flora-sPx-14));
   margin: 0;
 }
@@ -669,5 +669,5 @@
 }
 
 .profilePostsError {
-  color: #c98a7a;
+  color: var(--flora-signal);
 }

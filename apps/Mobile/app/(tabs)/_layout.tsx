@@ -13,6 +13,7 @@ import {
 } from "@/components/tabbar/TabBarNavIcons";
 import { MusicMiniPlayer } from "@/components/MusicMiniPlayer";
 import { useTabRouteTransition } from "@/components/TabRouteTransition";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { isTabActive, isTabRoot } from "@/lib/getActiveTabRouteKey";
 import { isMessagesInThreadPath, messagesTabBarStyleForRoute } from "@/lib/messagesTabBar";
 import { useIdleCommunitiesTabPreload } from "@/lib/communitiesTabPreload";
@@ -29,6 +30,20 @@ import { router, Tabs, usePathname, useSegments } from "expo-router";
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/**
+ * Фон под навигатором. Живёт отдельно от `TabsLayout`: смена темы не должна
+ * перерисовывать `<Tabs>` со всеми дескрипторами экранов.
+ */
+function TabsThemedBackdrop() {
+  useFloraTheme();
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.backdrop, { backgroundColor: floraColors.bg }]}
+    />
+  );
+}
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -50,16 +65,13 @@ export default function TabsLayout() {
     () => ({
       animation: "none" as const,
       freezeOnBlur: true,
-      headerStyle: { backgroundColor: floraColors.surface },
-      headerTintColor: floraColors.text,
       tabBarStyle: floraTabBarStyle(tabBarBottomInset),
       tabBarBackground: () => <FloraTabBarBackground />,
       tabBarShowLabel: false,
       tabBarIconStyle: styles.tabBarIcon,
-      sceneStyle: { backgroundColor: floraColors.bg },
+      /** Прозрачная сцена: фон даёт `TabsThemedBackdrop`, экраны красят свои корни. */
+      sceneStyle: { backgroundColor: "transparent" as const },
       tabBarItemStyle: styles.tabBarItem,
-      tabBarActiveTintColor: floraColors.accent,
-      tabBarInactiveTintColor: "rgba(250, 250, 250, 0.55)",
     }),
     [tabBarBottomInset],
   );
@@ -68,6 +80,7 @@ export default function TabsLayout() {
     <HamburgerMenuProvider>
       <FeedLightboxProvider>
         <View style={styles.tabsRoot}>
+        <TabsThemedBackdrop />
         <Tabs
           detachInactiveScreens={false}
           screenListeners={screenListeners}
@@ -91,9 +104,9 @@ export default function TabsLayout() {
             options={{
               title: "Лента",
               headerShown: false,
-              tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge color={color} size={size}>
-                  <TabBarFeedIcon color={color} size={size} />
+              tabBarIcon: ({ size, focused }) => (
+                <TabBarIconWithBadge>
+                  <TabBarFeedIcon focused={focused} size={size} />
                 </TabBarIconWithBadge>
               ),
             }}
@@ -103,9 +116,9 @@ export default function TabsLayout() {
             options={{
               title: "Музыка",
               headerShown: false,
-              tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge color={color} size={size}>
-                  <TabBarMusicIcon color={color} size={size} />
+              tabBarIcon: ({ size, focused }) => (
+                <TabBarIconWithBadge>
+                  <TabBarMusicIcon focused={focused} size={size} />
                 </TabBarIconWithBadge>
               ),
             }}
@@ -128,9 +141,9 @@ export default function TabsLayout() {
               title: "Сообщения",
               headerShown: false,
               tabBarStyle: messagesTabBarStyleForRoute(route, tabBarBottomInset),
-              tabBarIcon: ({ color, size }) => (
-                <SignalsTabBarIcon badgeKey="messagesUnread" color={color} size={size}>
-                  <TabBarMessagesIcon color={color} size={size} />
+              tabBarIcon: ({ size, focused }) => (
+                <SignalsTabBarIcon badgeKey="messagesUnread">
+                  <TabBarMessagesIcon focused={focused} size={size} />
                 </SignalsTabBarIcon>
               ),
             })}
@@ -140,9 +153,9 @@ export default function TabsLayout() {
             options={{
               title: "Уведомления",
               headerShown: false,
-              tabBarIcon: ({ color, size }) => (
-                <SignalsTabBarIcon badgeKey="notificationsUnread" color={color} size={size}>
-                  <TabBarNotificationsIcon color={color} size={size} />
+              tabBarIcon: ({ size, focused }) => (
+                <SignalsTabBarIcon badgeKey="notificationsUnread">
+                  <TabBarNotificationsIcon focused={focused} size={size} />
                 </SignalsTabBarIcon>
               ),
             }}
@@ -192,9 +205,9 @@ export default function TabsLayout() {
             options={{
               title: "Профиль",
               headerShown: false,
-              tabBarIcon: ({ color, size }) => (
-                <TabBarIconWithBadge color={color} size={size}>
-                  <TabBarProfileIcon color={color} size={size} />
+              tabBarIcon: ({ size, focused }) => (
+                <TabBarIconWithBadge>
+                  <TabBarProfileIcon focused={focused} size={size} />
                 </TabBarIconWithBadge>
               ),
             }}
@@ -211,7 +224,13 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabsRoot: {
     flex: 1,
-    backgroundColor: floraColors.bg,
+  },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   tabBarItem: {
     paddingVertical: 0,

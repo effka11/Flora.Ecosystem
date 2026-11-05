@@ -13,9 +13,6 @@ import { isLocalDecodedUri, useFrcImageUri } from "@/lib/frcImage";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { floraColors, floraSpacing, kegl, sPx, tracking } from "@/lib/theme";
 
-/** Strike colour for blocked people — static, never animated. */
-const ACCOUNT_BLOCKED_DIAGONAL = "#e8382c";
-
 export type FloraAvatarProps = {
   size?: number;
   avatarUuid?: string | null;
@@ -66,7 +63,7 @@ function BlockedAccountDiagonal({ size }: { size: number }) {
           position: "absolute",
           width: length,
           height: stroke,
-          backgroundColor: ACCOUNT_BLOCKED_DIAGONAL,
+          backgroundColor: floraColors.signalSolid,
           top: (size - stroke) / 2,
           left: (size - length) / 2,
           transform: [{ rotate: "45deg" }],
@@ -176,7 +173,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
     // Web `.defaultArt` inset ring — fill is `--flora-green-dark`, same as the profile cover.
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.08)",
+    borderColor: floraColors.overlay(0.08),
     shadowColor: "#000",
     shadowOpacity: 0.35,
     shadowRadius: 4,

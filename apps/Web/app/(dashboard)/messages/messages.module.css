@@ -8,15 +8,12 @@
   --search-width: calc((89 - 38 + 1) * var(--flora-grid-step));
   --search-height: calc((5 - 3 + 1) * var(--flora-grid-step));
   --flora-bg-base: var(--flora-bg);
-  --flora-accent: var(--flora-green-light);
   --flora-accent-hover: color-mix(in srgb, var(--flora-green-light) 88%, #fff 12%);
-  --flora-on-accent: #10200e;
   --flora-text-primary: var(--flora-white-template);
   --flora-secondary-hover-bg: var(--flora-reserve-hover-surface);
-  --flora-bg-elevated: color-mix(in srgb, var(--flora-bg) 92%, #1c1c1c 8%);
+  --flora-bg-elevated: color-mix(in srgb, var(--flora-bg) 92%, #171718 8%);
   --flora-hover-surface-tint: color-mix(in srgb, #fff 6%, transparent);
   --flora-font: var(--font-manrope), system-ui, sans-serif;
-  --flora-text-on-bubble: #f2f4f2;
   --flora-hover-accent-glow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 45%, transparent);
   /* Как .messagesSearchBox — общий вид полей ввода на экране сообщений. */
   --messages-field-border: 1px solid var(--flora-green-dark);
@@ -199,7 +196,7 @@
 
 .messagesJumpToLatest:hover {
   transform: translateY(-1px);
-  background: color-mix(in srgb, var(--flora-bg) 84%, #1a1a1a 16%);
+  background: color-mix(in srgb, var(--flora-bg) 84%, #303133 16%);
   border-color: color-mix(in srgb, var(--flora-green-light) 65%, var(--flora-gray));
 }
 
@@ -434,7 +431,7 @@
   border: none;
   border-radius: var(--flora-sPx-8);
   background: transparent;
-  color: rgba(250, 250, 250, 0.9);
+  color: rgba(var(--flora-white-template-rgb), 0.9);
   font-size: max(1px, var(--flora-sPx-14));
   font-weight: 400;
   letter-spacing: calc(0.42px * var(--flora-grid-s));
@@ -528,7 +525,7 @@
 
 .messagesFolderDialogField input {
   min-height: calc(3 * var(--flora-grid-step));
-  border: 1px solid var(--flora-green-dark, #3a5a34);
+  border: 1px solid var(--flora-green-dark, #303132);
   border-radius: var(--flora-sPx-12);
   padding: 0 var(--flora-sPx-14);
   background: transparent;
@@ -996,7 +993,7 @@
 }
 
 .messagesConversationUnread {
-  background: rgba(164, 209, 138, 0.9);
+  background: color-mix(in srgb, var(--flora-green-light) 90%, transparent);
   color: var(--flora-on-accent);
   font-size: max(1px, var(--flora-sPx-13));
   letter-spacing: calc(0.39px * var(--flora-grid-s));
@@ -1913,7 +1910,7 @@
 }
 
 .messagesBubbleThem {
-  /* Приглушённее своего (--flora-green-dark): лёгкий зелёный тон, чуть менее насыщенный. */
+  /* Приглушённее своего (--flora-green-dark): лёгкий холодный тон поверхности. */
   background: color-mix(
     in srgb,
     color-mix(in srgb, var(--flora-reserve-bubble-them-bg) 10%, var(--flora-accent-fill-subtle-hover) 90%) 75%,
@@ -2381,7 +2378,7 @@
 }
 
 /*
- * Коллаж 2+ фото: без зелёного пузыря — только сетка снимков (как альбом в TG).
+ * Коллаж 2+ фото: без графитового пузыря — только сетка снимков (как альбом в TG).
  * Подпись под коллажем сохраняет фон своего/чужого пузыря.
  */
 .messagesBubble.messagesBubblePhotoCollage,
@@ -2391,7 +2388,7 @@
   overflow: visible;
 }
 
-/* Прозрачные PNG/WebP (стикеры и т.п.): без зелёной подложки, размер по содержимому. */
+/* Прозрачные PNG/WebP (стикеры и т.п.): без графитовой подложки, размер по содержимому. */
 .messagesBubblePhoto:has(.messageImageCard[data-has-alpha="true"]) .messageImageCard {
   width: fit-content;
   max-width: 100%;
@@ -2590,7 +2587,7 @@
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #ff5f5f;
+  color: var(--flora-signal);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -2599,8 +2596,8 @@
 }
 
 .messagesComposeTrash:hover:not(:disabled) {
-  background: color-mix(in srgb, #ff5f5f 13%, transparent);
-  color: #ff7a7a;
+  background: color-mix(in srgb, var(--flora-signal) 13%, transparent);
+  color: var(--flora-signal);
 }
 
 .messagesComposeTrash:active:not(:disabled) {
@@ -2722,7 +2719,7 @@
 
 .messagesVoiceInlineError {
   min-width: 0;
-  color: #ff7a7a;
+  color: var(--flora-signal);
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: max(1px, var(--flora-sPx-12));
   overflow: hidden;
@@ -2798,12 +2795,12 @@
   --messages-sticker-panel-inset: var(--flora-grid-step);
   --messages-sticker-tabs-height: calc(3 * var(--flora-grid-step));
   --messages-sticker-tab-selected-height: calc(2 * var(--flora-grid-step));
-  /* Зазор серая подложка ↔ зелёная (сверху/снизу = слева/справа внутри вкладки) */
+  /* Зазор серая подложка ↔ графитовая (сверху/снизу = слева/справа внутри вкладки) */
   --messages-sticker-tab-selected-inset: calc(
     (var(--messages-sticker-tabs-height) - var(--messages-sticker-tab-selected-height)) / 2
   );
   --messages-sticker-tab-text-pad-x: calc(3 * var(--flora-grid-step));
-  /* Две вкладки: 2×(inset зелёной + 3 кл. до текста) + подпись «Стикеры» (~5 кл.) + зазор между вкладками */
+  /* Две вкладки: 2×(inset графитовой + 3 кл. до текста) + подпись «Стикеры» (~5 кл.) + зазор между вкладками */
   --messages-sticker-tab-pad-x: calc(
     var(--messages-sticker-tab-selected-inset) + var(--messages-sticker-tab-text-pad-x)
   );

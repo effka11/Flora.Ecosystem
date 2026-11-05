@@ -11,7 +11,6 @@
   --compose-actions-right-col: 88;
   --compose-sidebar-col-start: 92;
   --compose-sidebar-w: calc(16 * var(--flora-grid-step));
-  --flora-accent: var(--flora-green-light);
   /* глифы в viewBox начинаются правее левого края svg — подравниваем по сетке */
   --compose-tool-x-nudge: calc(-3 * var(--flora-grid-step-fine) / 5 + 1px);
   position: relative;
@@ -195,7 +194,7 @@
 }
 
 .composeDraftActionBtnDanger:hover:not(:disabled) {
-  color: #f87171;
+  color: var(--flora-signal);
   background: rgba(248, 113, 113, 0.1);
 }
 
@@ -480,7 +479,6 @@
   /* Синхрон с .messagesChatView — без этого max-height панели эмодзи в portal некорректен. */
   --messages-chat-compose-line: 55;
   --messages-field-icon: var(--flora-gray);
-  --flora-text-on-bubble: #f2f4f2;
   --flora-hover-accent-glow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 45%, transparent);
   --compose-post-base-height: calc(5 * var(--flora-grid-step) + var(--flora-grid-step-fine));
   --compose-post-extra-height: 0px;
@@ -542,7 +540,6 @@
   transform-origin: top right;
   --messages-chat-compose-line: 55;
   --messages-field-icon: var(--flora-gray);
-  --flora-text-on-bubble: #f2f4f2;
   --flora-hover-accent-glow: 0 0 var(--flora-sPx-8) color-mix(in srgb, var(--flora-green-light) 45%, transparent);
 }
 
@@ -599,7 +596,7 @@
 .composePublishError {
   margin: 0 0 var(--flora-grid-step-fine);
   font-size: max(1px, var(--flora-sPx-14));
-  color: #c98a7a;
+  color: var(--flora-signal);
 }
 
 .composeIdentity {
@@ -897,7 +894,7 @@
   box-sizing: border-box;
   color: var(--flora-green-light);
   background: transparent;
-  border: 1px solid rgba(164, 209, 138, 0.4);
+  border: 1px solid color-mix(in srgb, var(--flora-green-light) 40%, transparent);
   cursor: pointer;
   transition: background 0.15s ease, text-shadow 0.2s ease;
 }
@@ -985,13 +982,13 @@
 }
 
 .publishBtn:hover:not(:disabled) {
-  background: rgba(164, 209, 138, 0.1);
+  background: color-mix(in srgb, var(--flora-green-light) 10%, transparent);
 }
 
 .publishBtn:disabled {
   opacity: 0.38;
   cursor: not-allowed;
-  border-color: rgba(164, 209, 138, 0.2);
+  border-color: color-mix(in srgb, var(--flora-green-light) 20%, transparent);
 }
 
 /* Превью фото в compose — та же сетка, что в ленте; ниже строки ввода. */
@@ -1024,7 +1021,7 @@
   border: none;
   border-radius: 9999px;
   background: rgba(0, 0, 0, 0.55);
-  color: #f2f4f2;
+  color: var(--flora-text-on-bubble);
   font-size: max(1px, var(--flora-sPx-20));
   line-height: 1;
   cursor: pointer;

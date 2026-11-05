@@ -1,4 +1,5 @@
 import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import type { MsgConversationDto } from "@flora/client-core/contracts";
 import type { ChatListFolderId } from "@flora/client-core/messaging";
@@ -133,6 +134,7 @@ const FolderPageList = memo(function FolderPageList({
   renderScrollComponent,
 }: PageListProps) {
   useFloraGrid();
+  useFloraTheme();
   const onEnterRef = useRef(onEnterSelect);
   const onToggleRef = useRef(onToggleSelect);
   const onListIdleRef = useRef(onListIdle);

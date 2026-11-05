@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiGetMusicGenrePage } from "@flora/client-core/api";
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ function routeParam(value: string | string[] | undefined): string {
 }
 
 export default function MusicGenreScreen() {
+  useFloraTheme();
   const params = useLocalSearchParams<{ genreId?: string }>();
   const genreId = routeParam(params.genreId);
   const genreQuery = useQuery({

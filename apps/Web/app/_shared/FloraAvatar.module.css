@@ -87,7 +87,7 @@
   top: 50%;
   width: calc(var(--flora-avatar-size) * 1.41421356);
   height: var(--flora-sPx-2);
-  background: #e8382c;
+  background: var(--flora-signal-solid);
   transform: translate(-50%, -50%) rotate(-45deg);
   pointer-events: none;
 }

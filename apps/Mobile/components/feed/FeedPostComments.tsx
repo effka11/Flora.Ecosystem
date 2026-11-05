@@ -180,7 +180,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginTop: floraSpacing.gridFine * 2,
     paddingTop: floraSpacing.gridFine * 2,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(250, 250, 250, 0.08)",
+    borderTopColor: floraColors.overlay(0.08),
     gap: floraSpacing.grid,
   },
   loadingWrap: {
@@ -255,7 +255,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minHeight: sPx(40),
     maxHeight: 8 * floraSpacing.grid,
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.22)",
+    borderColor: floraColors.overlay(0.22),
     borderRadius: floraSpacing.gridFine * 2,
     paddingHorizontal: floraSpacing.gridFine * 2,
     paddingVertical: floraSpacing.gridFine * 2,
@@ -271,8 +271,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "center",
     borderRadius: floraSpacing.gridFine * 2,
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.35)",
-    backgroundColor: "rgba(164, 209, 138, 0.1)",
+    borderColor: floraColors.overlay(0.35),
+    backgroundColor: floraColors.overlay(0.1),
   },
   sendBtnDisabled: {
     opacity: 0.45,

@@ -4,7 +4,9 @@ import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Reanimated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraSpacing, floraTabFilter, kegl, sPx, tracking } from "@/lib/theme";
+import { floraTokenAlpha } from "@/lib/floraTheme";
 
 /**
  * База ширины индикатора: реальная ширина — через scaleX (transform), а не
@@ -44,6 +46,7 @@ export const FloraTabLabel = memo(function FloraTabLabel({
   progress: SharedValue<number>;
 }) {
   useFloraGrid();
+  useFloraTheme();
   const overlayStyle = useAnimatedStyle(() => {
     const distance = Math.abs(progress.value - index);
     return { opacity: distance >= 1 ? 0 : 1 - distance };
@@ -101,9 +104,6 @@ export const floraTabChrome = liveGridStyles(() => StyleSheet.create({
   },
 }));
 
-const EDGE_FADE_SOLID = floraColors.bg;
-const EDGE_FADE_CLEAR = "rgba(12, 12, 12, 0)";
-
 /**
  * Краевые фейды горизонтального ряда вкладок (настройки, люди).
  * `cover` 0…1 прячет их вместе с idle-хромом при открытии поиска.
@@ -126,12 +126,15 @@ export function FloraTabStripEdgeFades({
     const shown = maxOffset.value > 1 && offset.value < maxOffset.value - 1 ? 1 : 0;
     return { opacity: shown * vis };
   });
+  useFloraTheme();
+  const edgeFadeSolid = floraColors.bg;
+  const edgeFadeClear = floraTokenAlpha(floraColors.bg, 0);
 
   return (
     <>
       <Reanimated.View pointerEvents="none" style={[floraTabChrome.edgeFadeLeft, leftStyle]}>
         <LinearGradient
-          colors={[EDGE_FADE_SOLID, EDGE_FADE_CLEAR]}
+          colors={[edgeFadeSolid, edgeFadeClear]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}
@@ -139,7 +142,7 @@ export function FloraTabStripEdgeFades({
       </Reanimated.View>
       <Reanimated.View pointerEvents="none" style={[floraTabChrome.edgeFadeRight, rightStyle]}>
         <LinearGradient
-          colors={[EDGE_FADE_CLEAR, EDGE_FADE_SOLID]}
+          colors={[edgeFadeClear, edgeFadeSolid]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}

@@ -1,6 +1,6 @@
 .addTrackScroll {
   /* Непрозрачные поверхности меню (без --flora-green-bubble из messages). */
-  --add-track-menu-bg: color-mix(in srgb, var(--flora-bg) 90%, #1a2218 10%);
+  --add-track-menu-bg: color-mix(in srgb, var(--flora-bg) 90%, #1c1d1e 10%);
   --add-track-menu-border: color-mix(in srgb, var(--flora-green-light) 30%, var(--flora-green-dark));
   --add-track-menu-hover-bg: color-mix(in srgb, var(--flora-green-light) 14%, var(--flora-bg));
   --add-track-menu-active-bg: color-mix(in srgb, var(--flora-green-light) 20%, var(--flora-bg));
@@ -432,7 +432,7 @@
 }
 
 .artistPickerRemoveBtn:hover {
-  color: #ff7e7e;
+  color: var(--flora-signal);
   background: rgba(var(--flora-white-template-rgb), 0.06);
 }
 
@@ -646,7 +646,7 @@
   border-radius: var(--flora-sPx-12);
   background:
     radial-gradient(circle at 76% 18%, color-mix(in srgb, var(--flora-green-light) 18%, transparent) 0%, transparent 58%),
-    linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 24%, #121212) 0%, #121212 100%);
+    linear-gradient(145deg, color-mix(in srgb, var(--flora-green-light) 24%, #101011) 0%, #101011 100%);
   display: grid;
   place-items: center;
   color: var(--flora-green-light);

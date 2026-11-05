@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiGetProfile, apiGetProfilePosts } from "@flora/client-core/api";
 import { apiGetMe } from "@flora/client-core/auth";
@@ -25,6 +26,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 
 export default function ProfileScreen() {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const me = useSessionStore((s) => s.me);

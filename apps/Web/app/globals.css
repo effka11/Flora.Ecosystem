@@ -1,53 +1,65 @@
 @import "./flora-motion.css";
 
 :root {
-  --flora-bg: #0c0c0c;
-  --flora-white-template: #fafafa;
-  --flora-white-template-rgb: 250, 250, 250;
-  --flora-green-light: #a4d18a;
-  --flora-green-dark: #2c3527;
-  /* Живой тёплый красный — лайки; контрастирует с flora-green-light, не кислотный на тёмном фоне */
-  --flora-like: #e8382c;
+  /* Монохром Flora: Neutral Black + Cold Silver.
+     Остальные слоты — уровни серебра на чёрном. Канон — documents/design/color-reference.md. */
+  --flora-bg: #0a0a0a;
+  --flora-white-template: #dde2e8;
+  --flora-white-template-rgb: 221, 226, 232;
+  --flora-text-secondary: #b3b7bc;
+  --flora-accent: #dde2e8;
+  --flora-accent-dark: #303132;
+  /* Исторические имена слотов бренда: модули ссылаются на них. */
+  --flora-green-light: var(--flora-accent);
+  --flora-green-dark: var(--flora-accent-dark);
+  /* Чёрный текст и иконки на серебряной заливке. */
+  --flora-on-accent: #0a0a0a;
+  /* Текст и иконки внутри серебряного пузыря. */
+  --flora-text-on-bubble: #d5d9df;
+  /* Сигнал: ошибки, деструктив, бейджи и лайки. */
+  --flora-signal: #ff9688;
+  /* Заливочный сигнал: диагональ блокировки, точка статуса; не текст. */
+  --flora-signal-solid: #e8382c;
 
-  /* Резерв: производные от --flora-bg / --flora-green-light / --flora-white-template — только #hex, без alpha. */
-  /* 6% green-light + 94% bg */
-  --flora-accent-fill-subtle: #151814;
-  /* 14% green-light + 86% bg */
-  --flora-accent-fill-subtle-hover: #21281e;
-  /* 40% green-light + 60% bg — обводка чужого пузыря, меню */
-  --flora-green-bubble: #495b3e;
+  /* Резерв: производные уровни серебра на чёрном — только #hex, без alpha. */
+  /* 6% silver + 94% bg */
+  --flora-accent-fill-subtle: #171717;
+  /* 14% silver + 86% bg */
+  --flora-accent-fill-subtle-hover: #282829;
+  /* 40% silver + 60% bg — обводка чужого пузыря, меню */
+  --flora-green-bubble: #5e6063;
   /* 8% green-bubble + 92% bg — фон чужого пузыря, панель эмодзи, меню чата */
-  --flora-reserve-surface-them: #111210;
+  --flora-reserve-surface-them: #111111;
   --flora-reserve-bubble-them-bg: var(--flora-reserve-surface-them);
   --flora-reserve-popover-bg: var(--flora-reserve-surface-them);
   --flora-reserve-popover-border: var(--flora-green-bubble);
   --flora-reserve-popover-shadow: 0 var(--flora-sPx-18) calc(1px * round(50 * var(--flora-grid-s))) #00000057;
   /* 8% white-template + 92% bg — подложки списков (лента, people) */
-  --flora-reserve-substrate-template: #1f1f1f;
+  --flora-reserve-substrate-template: #1b1b1c;
   /* 8% flora-gray + 92% surface-them — rail категорий и вкладки эмодзи/стикеры */
-  --flora-reserve-substrate-gray-muted: #1c1d1b;
+  --flora-reserve-substrate-gray-muted: #1c1c1c;
   /* 5% white + 95% surface-them — ячейки эмодзи в сетке */
-  --flora-reserve-popover-inset: #1d1e1c;
+  --flora-reserve-popover-inset: #1b1b1c;
   --flora-reserve-popover-rail: var(--flora-reserve-substrate-gray-muted);
-  /* 18% green-light + 82% surface-them */
-  --flora-reserve-popover-accent-selected: #2b3426;
-  /* 12% green-light + 88% surface-them */
-  --flora-reserve-popover-accent-chip: #23291f;
-  /* 12% white + 88% surface-them */
-  --flora-reserve-popover-divider: #2d2e2c;
+  /* 18% silver + 82% surface-them */
+  --flora-reserve-popover-accent-selected: #363738;
+  /* 12% silver + 88% bg */
+  --flora-reserve-popover-accent-chip: #232425;
+  /* 12% silver + 88% bg — разделитель поповера */
+  --flora-reserve-popover-divider: #232425;
   /* 12% green-bubble + 88% bg — hover пункта меню чата */
-  --flora-reserve-surface-them-hover: #131512;
+  --flora-reserve-surface-them-hover: #141415;
   /* 8% white + 92% bg */
-  --flora-reserve-hover-surface: #1f1f1f;
+  --flora-reserve-hover-surface: #1b1b1c;
   /* 8% white + 92% surface-them — hover внутри панели эмодзи */
-  --flora-reserve-hover-on-surface-them: #242523;
+  --flora-reserve-hover-on-surface-them: #212222;
   --flora-gray-light: var(--flora-white-template);
-  /* 55% white + 45% bg — единый приглушённый серый (текст, иконки, счётчики, плейсхолдеры) */
-  --flora-gray: #8f8f8f;
-  /* Неактивные зелёные кнопки: сильно приглушён относительно flora-green-light */
+  /* Приглушённый текст (закреплённый уровень) — иконки, счётчики, плейсхолдеры */
+  --flora-gray: #979a9e;
+  /* Неактивные акцентные кнопки: сильно приглушён относительно --flora-accent */
   --flora-green-muted: color-mix(in srgb, var(--flora-green-light) 24%, var(--flora-gray) 76%);
-  /* 85% white + 15% bg */
-  --flora-gray-hover: #d6d6d6;
+  /* 80% silver + 20% bg */
+  --flora-gray-hover: #b3b7bc;
   /* Линии разделения — приглушённый оттенок flora-gray на фоне */
   --flora-gray-divider: color-mix(in srgb, var(--flora-gray) 14%, var(--flora-bg) 86%);
   /* Квант при s=1 (эталон). Живые значения пишет applyWebGridFrameCssVars. */
@@ -73,9 +85,9 @@
   --flora-sPx-22: 22px;
   --flora-sPx-24: 24px;
   --flora-list-row-pad-y: calc(2 * var(--flora-grid-step));
-  /* 20% / 10% green-light + bg — линии сетки (в градиентах «transparent» — маска, не цвет заливки) */
-  --flora-grid-line: #2a3325;
-  --flora-grid-line-fine: #1b2019;
+  /* 20% / 10% silver + bg — линии сетки (в градиентах «transparent» — маска, не цвет заливки) */
+  --flora-grid-line: #343536;
+  --flora-grid-line-fine: #1f2020;
   /* Fallback кадра: эталон s=1, пока JS не выставит шаблон. */
   --flora-frame-width: calc(128 * var(--flora-grid-step));
   --flora-frame-height: calc(63 * var(--flora-grid-step));
@@ -88,6 +100,153 @@
 
   --flora-tracking-15: calc(0.45px * var(--flora-grid-s));
   --flora-tracking-16: calc(0.48px * var(--flora-grid-s));
+}
+
+/* Палитры. `:root` = тёмная; атрибут на <html> переключает тему.
+   `.flora-theme-*` — те же значения для превью в настройках. */
+:root,
+.flora-theme-dark {
+  --flora-bg: #0a0a0a;
+  --flora-white-template: #dde2e8;
+  --flora-white-template-rgb: 221, 226, 232;
+  --flora-text-secondary: #b3b7bc;
+  --flora-accent: #dde2e8;
+  --flora-accent-dark: #303132;
+  --flora-green-light: var(--flora-accent);
+  --flora-green-dark: var(--flora-accent-dark);
+  --flora-on-accent: #0a0a0a;
+  --flora-text-on-bubble: #d5d9df;
+  --flora-signal: #ff9688;
+  --flora-signal-solid: #e8382c;
+  --flora-accent-fill-subtle: #171717;
+  --flora-accent-fill-subtle-hover: #282829;
+  --flora-green-bubble: #5e6063;
+  --flora-reserve-surface-them: #111111;
+  --flora-reserve-substrate-template: #1b1b1c;
+  --flora-reserve-substrate-gray-muted: #1c1c1c;
+  --flora-reserve-popover-inset: #1b1b1c;
+  --flora-reserve-popover-accent-selected: #363738;
+  --flora-reserve-popover-accent-chip: #232425;
+  --flora-reserve-popover-divider: #232425;
+  --flora-reserve-surface-them-hover: #141415;
+  --flora-reserve-hover-surface: #1b1b1c;
+  --flora-reserve-hover-on-surface-them: #212222;
+  --flora-gray: #979a9e;
+  --flora-gray-hover: #b3b7bc;
+  --flora-gray-divider: #1e1e1f;
+  --flora-grid-line: #343536;
+  --flora-grid-line-fine: #1f2020;
+  /* Вес текста для grayscale-AA Windows-Chromium: ClearType на том же весе 300
+     даёт ~10% меньше «чернил», поэтому ось wght подрезана до исходной толщины.
+     Калибровка — 13-24px при DPR 1-1.25; см. MonoTextLayer. */
+  --flora-text-wght: 245;
+  color-scheme: dark;
+}
+
+[data-flora-theme="light"],
+.flora-theme-light {
+  --flora-bg: #f3f5f8;
+  --flora-white-template: #0a0a0a;
+  --flora-white-template-rgb: 10, 10, 10;
+  --flora-text-secondary: #676767;
+  --flora-accent: #0a0a0a;
+  --flora-accent-dark: #c9cbcd;
+  --flora-green-light: var(--flora-accent);
+  --flora-green-dark: var(--flora-accent-dark);
+  --flora-on-accent: #f3f5f8;
+  --flora-text-on-bubble: #0a0a0a;
+  --flora-signal: #c21a14;
+  --flora-signal-solid: #e8382c;
+  --flora-accent-fill-subtle: #e5e7ea;
+  --flora-accent-fill-subtle-hover: #d2d4d7;
+  --flora-green-bubble: #8a8b8d;
+  --flora-reserve-surface-them: #ffffff;
+  --flora-reserve-substrate-template: #e0e2e5;
+  --flora-reserve-substrate-gray-muted: #e0e2e5;
+  --flora-reserve-popover-inset: #f2f3f5;
+  --flora-reserve-popover-accent-selected: #d2d4d7;
+  --flora-reserve-popover-accent-chip: #dfe1e3;
+  --flora-reserve-popover-divider: #e0e1e3;
+  --flora-reserve-surface-them-hover: #ebedf0;
+  --flora-reserve-hover-surface: #e0e2e5;
+  --flora-reserve-hover-on-surface-them: #ececec;
+  --flora-gray: #82878c;
+  --flora-gray-hover: #63686e;
+  --flora-gray-divider: #e3e6e9;
+  --flora-grid-line: #c4c6c8;
+  --flora-grid-line-fine: #dcdee0;
+  /* Тёмный текст на светлом в grayscale не утяжеляется — вес остаётся исходным. */
+  --flora-text-wght: 300;
+  --flora-reserve-popover-shadow: 0 var(--flora-sPx-18) calc(1px * round(50 * var(--flora-grid-s))) #00000024;
+  color-scheme: light;
+}
+
+[data-flora-theme="flora"],
+.flora-theme-flora {
+  --flora-bg: #0c0c0c;
+  --flora-white-template: #fafafa;
+  --flora-white-template-rgb: 250, 250, 250;
+  --flora-text-secondary: #d6d6d6;
+  --flora-accent: #a4d18a;
+  --flora-accent-dark: #2c3527;
+  --flora-green-light: var(--flora-accent);
+  --flora-green-dark: var(--flora-accent-dark);
+  --flora-on-accent: #0a0a0a;
+  --flora-text-on-bubble: #fafafa;
+  --flora-signal: #ff9688;
+  --flora-signal-solid: #e8382c;
+  --flora-accent-fill-subtle: #151814;
+  --flora-accent-fill-subtle-hover: #21281e;
+  --flora-green-bubble: #495b3e;
+  --flora-reserve-surface-them: #111210;
+  --flora-reserve-substrate-template: #1f1f1f;
+  --flora-reserve-substrate-gray-muted: #1c1d1b;
+  --flora-reserve-popover-inset: #1d1e1c;
+  --flora-reserve-popover-accent-selected: #2b3426;
+  --flora-reserve-popover-accent-chip: #23291f;
+  --flora-reserve-popover-divider: #2d2e2c;
+  --flora-reserve-surface-them-hover: #131512;
+  --flora-reserve-hover-surface: #1f1f1f;
+  --flora-reserve-hover-on-surface-them: #242523;
+  --flora-gray: #8f8f8f;
+  --flora-gray-hover: #d6d6d6;
+  --flora-gray-divider: #1e1e1e;
+  --flora-grid-line: #2a3325;
+  --flora-grid-line-fine: #1b2019;
+  --flora-text-wght: 245;
+  color-scheme: dark;
+}
+
+/* View Transitions: тот же 240 ms crossfade, что и в mobile. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.33, 1, 0.2, 1);
+}
+
+/* Fallback без View Transitions: один кадр цветовых переходов. */
+html.flora-theme-transition,
+html.flora-theme-transition body,
+html.flora-theme-transition body * {
+  transition:
+    background-color 240ms cubic-bezier(0.33, 1, 0.2, 1),
+    color 240ms cubic-bezier(0.33, 1, 0.2, 1),
+    border-color 240ms cubic-bezier(0.33, 1, 0.2, 1),
+    fill 240ms cubic-bezier(0.33, 1, 0.2, 1),
+    stroke 240ms cubic-bezier(0.33, 1, 0.2, 1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  html.flora-theme-transition,
+  html.flora-theme-transition body,
+  html.flora-theme-transition body * {
+    transition: none !important;
+  }
 }
 
 *,
@@ -116,6 +275,15 @@ body {
   font-family: inherit;
   font-size: max(1px, var(--flora-sPx-15));
   font-weight: 300;
+}
+
+/* Set by MonoTextLayer on the parent of every text node. A filter layer is the
+   only compositing switch that also works on inline spans in Chrome on Windows.
+   ClearType sharpens stems, so the grayscale layer alone reads heavier; the
+   variable axis is trimmed to `--flora-text-wght` to keep the pre-fix weight. */
+[data-flora-mono-text] {
+  filter: blur(0);
+  font-variation-settings: "wght" var(--flora-text-wght, 300);
 }
 
 /* Лента: полоса скрыта и там, где module-класс не доезжает (Firefox). */

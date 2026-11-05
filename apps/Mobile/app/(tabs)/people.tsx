@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFollowUser, apiSearchUsers, apiUnfollowUser } from "@flora/client-core/api";
@@ -253,6 +254,7 @@ function PeoplePane({
 }
 
 export default function PeopleScreen() {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const listPaddingBottom = floraTabBarContentPadding(Math.max(insets.bottom, sPx(8)));
   const queryClient = useQueryClient();
@@ -688,7 +690,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    borderBottomColor: "rgba(250, 250, 250, 0.06)",
+    borderBottomColor: floraColors.overlay(0.06),
     borderBottomWidth: 1,
   },
   rowMain: {
@@ -703,7 +705,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingRight: floraSpacing.gridFine,
   },
   rowMainPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.04)",
+    backgroundColor: floraColors.overlay(0.04),
   },
   avatarWrap: {
     position: "relative",
@@ -767,7 +769,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(17),
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(164, 209, 138, 0.08)",
+    backgroundColor: floraColors.overlay(0.08),
   },
   loading: {
     alignItems: "center",

@@ -9,6 +9,7 @@ import { mobileSessionStore } from "@/lib/session";
 import { useMusicStore } from "@/stores/musicStore";
 import { formatMusicDuration } from "@/lib/music/musicModels";
 import { useSPx } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { floraColors, floraSpacing, floraTabBarContentHeight, kegl, sPx, tracking } from "@/lib/theme";
 
 function isMessagesPath(pathname: string): boolean {
@@ -17,6 +18,7 @@ function isMessagesPath(pathname: string): boolean {
 
 export function MusicMiniPlayer() {
   const sp = useSPx();
+  useFloraTheme();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const current = useMusicStore((s) => s.current);
@@ -196,7 +198,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   progressTrack: {
     height: sPx(3),
     borderRadius: 999,
-    backgroundColor: "rgba(250, 250, 250, 0.13)",
+    backgroundColor: floraColors.overlay(0.13),
     marginTop: floraSpacing.gridFine,
     overflow: "hidden",
   },

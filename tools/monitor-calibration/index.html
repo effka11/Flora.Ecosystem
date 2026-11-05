@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flora — проверка монитора по токенам</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #dde2e8;
+    --muted: #979a9e;
+    --accent: #dde2e8;
+    --signal: #ff9688;
+    --signal-solid: #e8382c;
+    --surface: #111111;
+    --line: #232425;
+    --bubble-bg: #232324;
+    --bubble-text: #c5c9ce;
+    --bubble-time: #a3a6ab;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 400 15px/1.6 ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  header.top { padding: 40px 28px 24px; border-bottom: 1px solid var(--line); }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; font-weight: 500; }
+  h2 { font-size: 20px; margin: 0 0 6px; font-weight: 500; }
+  h3 { font-size: 15px; margin: 22px 0 8px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); max-width: 78ch; }
+  .warn { color: var(--signal); }
+  .ok { color: var(--accent); }
+  .pill {
+    display: inline-block; padding: 2px 8px; border: 1px solid var(--line);
+    border-radius: 999px; font-size: 12px; color: var(--muted); margin: 0 6px 6px 0;
+  }
+  nav.toc {
+    position: sticky; top: 0; z-index: 20; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 10px 28px; overflow-x: auto; white-space: nowrap;
+  }
+  nav.toc a { color: var(--muted); text-decoration: none; margin-right: 18px; font-size: 13px; }
+  nav.toc a:hover { color: var(--fg); }
+  main { padding: 0 28px 80px; }
+  section { padding: 36px 0 8px; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: 0; }
+  .cols { display: grid; grid-template-columns: 1.15fr .85fr; gap: 24px; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 16px; }
+  .checklist { margin: 0; padding-left: 18px; }
+  .checklist li { margin-bottom: 6px; }
+  .steps { display: grid; grid-auto-flow: column; gap: 4px; }
+  .step { text-align: center; font-size: 11px; color: var(--muted); }
+  .step i { display: block; height: 120px; border: 0; border-radius: 0; }
+  .step b { display: block; font-weight: 400; margin-top: 6px; font-family: ui-monospace, Consolas, monospace; }
+  .patchRow { display: flex; gap: 0; }
+  .patch { flex: 1 1 0; height: 150px; border: 0; border-radius: 0; cursor: pointer; }
+  .gammaRow { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+  .gammaRow .checker {
+    width: 170px; height: 170px; flex: 0 0 auto;
+    background-image: repeating-conic-gradient(#fff 0 25%, #000 0 50%);
+    background-size: 2px 2px; background-position: 0 0;
+  }
+  .gammaGroup { flex: 1 1 0; min-width: 130px; }
+  .gammaPatch {
+    height: 170px; display: flex; flex-direction: column; justify-content: flex-end;
+    align-items: center; gap: 2px; padding: 8px; cursor: pointer;
+  }
+  .gammaPatch b { font-size: 13px; font-weight: 600; color: #000; background: rgba(250,250,250,.75); padding: 0 6px; }
+  .gammaPatch code { font-size: 11px; color: #000; background: rgba(250,250,250,.75); padding: 0 6px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .swatch {
+    display: grid; grid-template-columns: 54px 1fr; gap: 12px; align-items: center;
+    text-align: left; padding: 8px; background: var(--surface); border: 1px solid var(--line);
+    color: inherit; font: inherit; cursor: pointer;
+  }
+  .swatch:hover { border-color: var(--muted); }
+  .swatch .chip { width: 54px; height: 54px; border-radius: 0; display: block; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 18%, transparent); }
+  .swatch .name { font-size: 13px; display: block; overflow-wrap: anywhere; }
+  .swatch code { font-size: 12px; color: var(--fg); }
+  .swatch .stats { font-size: 11px; color: var(--muted); display: block; }
+  .ladder { display: grid; grid-template-columns: 62% 1fr; gap: 0 16px; align-items: stretch; }
+  .ladder .bar { min-height: 34px; border-radius: 0; cursor: pointer; }
+  .ladder .label { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; border-bottom: 1px solid #000; }
+  .ladder .label code { color: var(--fg); }
+  .ladder .label span { color: var(--muted); }
+  .gradient { height: 90px; border: 0; border-radius: 0; }
+  .rough {
+    height: 34px; border: 0; border-radius: 0; background-color: #000;
+    background-image:
+      repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, #fff 0 1px, transparent 1px 3px);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td.ratio { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
+  .badge { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.pass { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
+  .badge.fail { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, var(--bg)); }
+  .textSample { background: var(--bg); padding: 16px; border: 1px solid var(--line); }
+  .textSample .s15 { font-size: 15px; font-weight: 300; letter-spacing: .45px; line-height: 1.7; }
+  .textSample .s13 { font-size: 13px; color: var(--muted); }
+  .bubble { background: var(--bubble-bg); color: var(--bubble-text); padding: 10px 15px; border-radius: 18px; font-size: 15px; line-height: 25px; max-width: 420px; }
+  .bubble time { display: block; color: var(--bubble-time); font-size: 12px; }
+  .note { font-size: 13px; color: var(--muted); }
+  .note strong { color: var(--fg); font-weight: 500; }
+  .fs {
+    position: fixed; inset: 0; z-index: 100; cursor: pointer;
+  }
+  .fs::after {
+    content: "Esc или клик — выйти"; position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--bg) 82%, transparent); padding: 4px 10px;
+  }
+  .fs.checker {
+    background-image: repeating-conic-gradient(#fff 0 25%, #000 0 50%) !important;
+    background-size: 2px 2px !important;
+  }
+  footer { padding: 28px; color: var(--muted); font-size: 12px; }
+  kbd { border: 1px solid var(--line); padding: 0 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <h1>Проверка монитора по токенам Flora</h1>
+  <p class="lead">
+    Страница показывает <strong>канонические sRGB-заливки</strong> из репозитория и тесты, по которым монитор приводят
+    к условиям, зафиксированным в <code>documents/design/color-reference.md</code>: SDR, sRGB, γ 2.2, 6500 K, Full range,
+    масштаб 100 %, чётные пиксели.
+  </p>
+  <p class="note">
+    Страница <strong>не измеряет</strong> панель: колориметра здесь нет. Она даёт однозначные ориентиры «видно / не видно»
+    и эталонные образцы токенов, чтобы поймать чёрный клиппинг, выбитые света, неверную гамму, цветной оттенок серого
+    и пост-обработку. Абсолютная точность (ΔE) — только аппаратный калибратор + ICC-профиль.
+  </p>
+  <div>
+    <span class="pill">токенов: 32</span>
+    <span class="pill">бренд-цветов сверено с color-reference.md: 4/4</span>
+    <span class="pill">CSS↔TS расхождений: 0</span>
+    <span class="pill">сгенерировано: 6 ноября 2026 г. в 01:25</span>
+  </div>
+</div></header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#setup">1. Окружение</a>
+  <a href="#black">2. Чёрный</a>
+  <a href="#white">3. Белый</a>
+  <a href="#gamma">4. Гамма</a>
+  <a href="#neutral">5. Нейтраль</a>
+  <a href="#darks">6. Тёмная лестница</a>
+  <a href="#ramps">7. Градиенты</a>
+  <a href="#tokens">8. Токены</a>
+  <a href="#contrast">9. Контраст</a>
+  <a href="#text">10. Текст и пиксели</a>
+</div></nav>
+
+<main class="wrap">
+
+<section id="setup">
+  <h2>1. Окружение: сначала выключить всё, что «улучшает» картинку</h2>
+  <p class="lead">Порядок важен: пока включены динамические режимы, любые тесты ниже врут. Калибровать нужно на прогретом мониторе (30 минут) в постоянном освещении.</p>
+  <div class="cols">
+    <div class="card">
+      <h3>Монитор и система</h3>
+      <ol class="checklist">
+        <li><strong>Разрешение</strong> 1920 × 1080, <strong>масштаб 100 %</strong>, частота 60 Гц — тесты рассчитаны на 1 CSS px = 1 физический px.</li>
+        <li><strong>HDR выключен</strong>: Параметры → Система → Дисплей → HDR. Контент sRGB в HDR-режиме Windows выглядит промытым.</li>
+        <li><strong>Ночной свет выключен</strong>: там же, «Ночной свет» → Выкл.</li>
+        <li><strong>Профиль</strong>: <code>colorcpl.exe</code> → устройство → sRGB IEC61966-2.1 (или профиль производителя) по умолчанию.</li>
+        <li><strong>NVIDIA</strong>: формат цвета RGB, глубина 8 bpc, динамический диапазон <strong>Full</strong>. Digital Vibrance и любые «улучшения» — в ноль, «Other applications control color settings».</li>
+      </ol>
+      <h3>Меню монитора (OSD)</h3>
+      <ol class="checklist">
+        <li>SmartImage — <strong>Standard</strong> (или <strong>sRGB</strong>, если пункт есть). Не Game / Movie / Photo.</li>
+        <li>SmartContrast — <strong>Off</strong>, SmartResponse — Off, Over Scan — Off, LowBlue / EasyRead — Off, Pixel Orbiting — Off.</li>
+        <li>Gamma — <strong>2.2</strong>. Color Temperature — <strong>6500 K</strong>. User Define (RGB-усиление) не трогать, пока нет измерений.</li>
+        <li>Contrast — 50 (заводской). <strong>Brightness</strong> — одно фиксированное комфортное значение; в тёмной комнате это обычно 30–50. Записать значение и не менять.</li>
+        <li>Sharpness — заводское (50). Выше — гало и «звон» на белом тексте.</li>
+      </ol>
+      <p class="note"><strong>Освещение:</strong> нейтральный белый свет ~6500 K, без прямого солнца и лампы в экране; яркость вокруг — примерно как у белого на экране.</p>
+    </div>
+    <div class="card">
+      <h3>Порядок настройки</h3>
+      <ol class="checklist">
+        <li>Сброс OSD на заводские (Reset).</li>
+        <li>SmartImage → Standard / sRGB; SmartContrast → Off.</li>
+        <li>Brightness по тесту <a href="#black">чёрного</a>: 16 должно едва отличаться от 0, 0 остаётся чёрным.</li>
+        <li>Contrast по тесту <a href="#white">белого</a>: 255 белый, 250 ещё отличим.</li>
+        <li>Gamma по <a href="#gamma">шахматке</a> → 2.2.</li>
+        <li>Нейтраль по <a href="#neutral">серому клину</a> → 6500 K, без зелени и мадженты.</li>
+        <li>Проверить <a href="#darks">тёмную лестницу</a> и <a href="#ramps">градиенты</a>.</li>
+        <li>Записать итоговые значения OSD в журнал в <code>tools/monitor-calibration/README.md</code>.</li>
+      </ol>
+      <p class="note"><strong>Почему не крутить RGB-усиление наугад:</strong> на панели без калибратора это легко даёт «серый с оттенком» и потерянные ступени в тенях. Заводской пресет 6500 K + γ 2.2 предсказуемее ручной подстройки.</p>
+    </div>
+  </div>
+</section>
+
+<section id="black">
+  <h2>2. Чёрный: яркость и диапазон</h2>
+  <p class="lead">Плитки 0–16 на чистом чёрном. Клик по плитке — заливка на весь экран.</p>
+  <div class="card">
+    <div class="steps">
+      <div class="step"><i data-fs="#000000" style="background:#000000"></i><b>0</b></div><div class="step"><i data-fs="#010101" style="background:#010101"></i><b>1</b></div><div class="step"><i data-fs="#020202" style="background:#020202"></i><b>2</b></div><div class="step"><i data-fs="#030303" style="background:#030303"></i><b>3</b></div><div class="step"><i data-fs="#040404" style="background:#040404"></i><b>4</b></div><div class="step"><i data-fs="#050505" style="background:#050505"></i><b>5</b></div><div class="step"><i data-fs="#060606" style="background:#060606"></i><b>6</b></div><div class="step"><i data-fs="#080808" style="background:#080808"></i><b>8</b></div><div class="step"><i data-fs="#0a0a0a" style="background:#0a0a0a"></i><b>10</b></div><div class="step"><i data-fs="#0c0c0c" style="background:#0c0c0c"></i><b>12</b></div><div class="step"><i data-fs="#0e0e0e" style="background:#0e0e0e"></i><b>14</b></div><div class="step"><i data-fs="#101010" style="background:#101010"></i><b>16</b></div>
+    </div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> 0 — абсолютно чёрный, 1–2 неотличимы от него, 3–4 едва угадываются, 8 и выше видны уверенно.
+    <br><strong>Схлопнулись 0–6:</strong> чёрный клиппинг — поднимайте Brightness или включите Full range в NVIDIA. <strong>0 выглядит серым:</strong> яркость завышена — опускайте.</p>
+  </div>
+</section>
+
+<section id="white">
+  <h2>3. Белый: контраст и клиппинг</h2>
+  <p class="lead">Света не должны слипаться: 250–255 обязаны различаться, 255 остаётся белым без «выгорания».</p>
+  <div class="card">
+    <div class="steps">
+      <div class="step"><i data-fs="#efefef" style="background:#efefef"></i><b>239</b></div><div class="step"><i data-fs="#f1f1f1" style="background:#f1f1f1"></i><b>241</b></div><div class="step"><i data-fs="#f3f3f3" style="background:#f3f3f3"></i><b>243</b></div><div class="step"><i data-fs="#f5f5f5" style="background:#f5f5f5"></i><b>245</b></div><div class="step"><i data-fs="#f7f7f7" style="background:#f7f7f7"></i><b>247</b></div><div class="step"><i data-fs="#f9f9f9" style="background:#f9f9f9"></i><b>249</b></div><div class="step"><i data-fs="#fafafa" style="background:#fafafa"></i><b>250</b></div><div class="step"><i data-fs="#fbfbfb" style="background:#fbfbfb"></i><b>251</b></div><div class="step"><i data-fs="#fcfcfc" style="background:#fcfcfc"></i><b>252</b></div><div class="step"><i data-fs="#fdfdfd" style="background:#fdfdfd"></i><b>253</b></div><div class="step"><i data-fs="#fefefe" style="background:#fefefe"></i><b>254</b></div><div class="step"><i data-fs="#ffffff" style="background:#ffffff"></i><b>255</b></div>
+    </div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> 255 — чистый белый; 250, 252 ещё различимы; ступени 1–2 видны как мягкий переход.
+    <br><strong>Всё от 239 — белое:</strong> Contrast завышен или включён динамический контраст. <strong>255 выглядит серым:</strong> Contrast/Brightness занижены либо включён ограниченный диапазон.</p>
+  </div>
+</section>
+
+<section id="gamma">
+  <h2>4. Гамма: шахматка против серых</h2>
+  <p class="lead">Шахматка из чёрных и белых пикселей в среднем даёт 50 % линейной яркости. Плашка, которая сливается с шахматкой, показывает фактическую гамму монитора. Смотреть с расстояния 1–1,5 м или прищурившись.</p>
+  <div class="card">
+    <div class="gammaRow">
+      <div class="checker" data-fs-pattern="checker" title="50 % линейной яркости"></div>
+      <div class="gammaGroup">
+            <div class="gammaPatch" data-fs="#aeaeae" style="background:#aeaeae"><b>γ 1.8</b><code>174</code></div>
+          </div><div class="gammaGroup">
+            <div class="gammaPatch" data-fs="#b4b4b4" style="background:#b4b4b4"><b>γ 2</b><code>180</code></div>
+          </div><div class="gammaGroup">
+            <div class="gammaPatch" data-fs="#bababa" style="background:#bababa"><b>γ 2.2</b><code>186</code></div>
+          </div><div class="gammaGroup">
+            <div class="gammaPatch" data-fs="#bfbfbf" style="background:#bfbfbf"><b>γ 2.4</b><code>191</code></div>
+          </div><div class="gammaGroup">
+            <div class="gammaPatch" data-fs="#c3c3c3" style="background:#c3c3c3"><b>γ 2.6</b><code>195</code></div>
+          </div>
+    </div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> с шахматкой сливается плашка <strong>γ 2.2</strong> (код 186). Сливается 2.4 — монитор темнит середину, опустите Gamma в OSD на шаг. Сливается 2.0 — пересвет, поднимите Gamma. Правильный пресет — 2.2, без «поправок на глаз» через RGB.</p>
+  </div>
+</section>
+
+<section id="neutral">
+  <h2>5. Нейтраль: белая точка и оттенок серого</h2>
+  <p class="lead">В клине все каналы равны (R = G = B). Любой цветной оттенок на клине — это монитор, а не токены.</p>
+  <div class="card">
+    <div class="patchRow">
+      <div class="patch" data-fs="#000000" style="background:#000000;height:120px" title="#000000"></div><div class="patch" data-fs="#080808" style="background:#080808;height:120px" title="#080808"></div><div class="patch" data-fs="#101010" style="background:#101010;height:120px" title="#101010"></div><div class="patch" data-fs="#181818" style="background:#181818;height:120px" title="#181818"></div><div class="patch" data-fs="#202020" style="background:#202020;height:120px" title="#202020"></div><div class="patch" data-fs="#282828" style="background:#282828;height:120px" title="#282828"></div><div class="patch" data-fs="#303030" style="background:#303030;height:120px" title="#303030"></div><div class="patch" data-fs="#383838" style="background:#383838;height:120px" title="#383838"></div><div class="patch" data-fs="#404040" style="background:#404040;height:120px" title="#404040"></div><div class="patch" data-fs="#484848" style="background:#484848;height:120px" title="#484848"></div><div class="patch" data-fs="#505050" style="background:#505050;height:120px" title="#505050"></div><div class="patch" data-fs="#585858" style="background:#585858;height:120px" title="#585858"></div><div class="patch" data-fs="#606060" style="background:#606060;height:120px" title="#606060"></div><div class="patch" data-fs="#686868" style="background:#686868;height:120px" title="#686868"></div><div class="patch" data-fs="#707070" style="background:#707070;height:120px" title="#707070"></div><div class="patch" data-fs="#787878" style="background:#787878;height:120px" title="#787878"></div><div class="patch" data-fs="#808080" style="background:#808080;height:120px" title="#808080"></div><div class="patch" data-fs="#878787" style="background:#878787;height:120px" title="#878787"></div><div class="patch" data-fs="#8f8f8f" style="background:#8f8f8f;height:120px" title="#8f8f8f"></div><div class="patch" data-fs="#979797" style="background:#979797;height:120px" title="#979797"></div><div class="patch" data-fs="#9f9f9f" style="background:#9f9f9f;height:120px" title="#9f9f9f"></div><div class="patch" data-fs="#a7a7a7" style="background:#a7a7a7;height:120px" title="#a7a7a7"></div><div class="patch" data-fs="#afafaf" style="background:#afafaf;height:120px" title="#afafaf"></div><div class="patch" data-fs="#b7b7b7" style="background:#b7b7b7;height:120px" title="#b7b7b7"></div><div class="patch" data-fs="#bfbfbf" style="background:#bfbfbf;height:120px" title="#bfbfbf"></div><div class="patch" data-fs="#c7c7c7" style="background:#c7c7c7;height:120px" title="#c7c7c7"></div><div class="patch" data-fs="#cfcfcf" style="background:#cfcfcf;height:120px" title="#cfcfcf"></div><div class="patch" data-fs="#d7d7d7" style="background:#d7d7d7;height:120px" title="#d7d7d7"></div><div class="patch" data-fs="#dfdfdf" style="background:#dfdfdf;height:120px" title="#dfdfdf"></div><div class="patch" data-fs="#e7e7e7" style="background:#e7e7e7;height:120px" title="#e7e7e7"></div><div class="patch" data-fs="#efefef" style="background:#efefef;height:120px" title="#efefef"></div><div class="patch" data-fs="#f7f7f7" style="background:#f7f7f7;height:120px" title="#f7f7f7"></div><div class="patch" data-fs="#ffffff" style="background:#ffffff;height:120px" title="#ffffff"></div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="patchRow">
+      <div class="patch" data-fs="#808080" style="background:#808080;height:90px" title="нейтральный эталон 50%"></div>
+      <div class="patch" data-fs="#dde2e8" style="background:#dde2e8;height:90px" title="whiteTemplate"></div>
+      <div class="patch" data-fs="#0a0a0a" style="background:#0a0a0a;height:90px" title="bg"></div>
+      <div class="patch" data-fs="#dde2e8" style="background:#dde2e8;height:90px" title="accent"></div>
+      <div class="patch" data-fs="#ff9688" style="background:#ff9688;height:90px" title="signal"></div>
+      <div class="patch" data-fs="#e8382c" style="background:#e8382c;height:90px" title="signal-solid"></div>
+    </div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> клин нейтральный от теней до светов, белый — белый, без розового/зелёного/синего ухода. Ниже — нейтральный эталон 50 % и фактические бренд-заливки <code>whiteTemplate</code>, <code>bg</code>, <code>accent</code>, <code>signal</code>, <code>signal-solid</code>.
+    <br><strong>Серый уходит в зелень или маджету:</strong> смените пресет 6500 K / sRGB, не «лечите» RGB-слайдерами. <strong>Белый кажется тёплым:</strong> проверьте, что Night Light и LowBlue выключены, затем верните пресет цвета.</p>
+  </div>
+</section>
+
+<section id="darks">
+  <h2>6. Тёмная лестница токенов</h2>
+  <p class="lead">Flora живёт в тенях: фон <code>#0a0a0a</code>, подложки и пузыри отличаются на единицы sRGB. Здесь проверяется, что монитор не схлопывает эти ступени и не рисует лишних границ. ΔE — расстояние в Lab (CIE76) до предыдущей ступени: значения ниже 1 глазом почти не различаются и задуманы как «одна поверхность».</p>
+  <div class="card">
+    <div class="ladder"><div class="bar" data-fs="#0a0a0a" style="background:#0a0a0a" title="bg"></div>
+      <div class="label"><code>#0a0a0a</code><span>bg</span></div><div class="bar" data-fs="#111111" style="background:#111111" title="reserveSurfaceThem"></div>
+      <div class="label"><code>#111111</code><span>reserveSurfaceThem</span><span>ΔE 2.3</span></div><div class="bar" data-fs="#141415" style="background:#141415" title="reserveSurfaceThemHover"></div>
+      <div class="label"><code>#141415</code><span>reserveSurfaceThemHover</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#171717" style="background:#171717" title="accentFillSubtle"></div>
+      <div class="label"><code>#171717</code><span>accentFillSubtle</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#1b1b1c" style="background:#1b1b1c" title="reserveSubstrateTemplate, reservePopoverInset, reserveHoverSurface"></div>
+      <div class="label"><code>#1b1b1c</code><span>reserveSubstrateTemplate · reservePopoverInset · reserveHoverSurface</span><span>ΔE 2.2</span></div><div class="bar" data-fs="#1c1c1c" style="background:#1c1c1c" title="reserveSubstrateGrayMuted"></div>
+      <div class="label"><code>#1c1c1c</code><span>reserveSubstrateGrayMuted</span><span>ΔE 0.9</span></div><div class="bar" data-fs="#1e1e1f" style="background:#1e1e1f" title="grayDivider"></div>
+      <div class="label"><code>#1e1e1f</code><span>grayDivider</span><span>ΔE 1.3</span></div><div class="bar" data-fs="#1f2020" style="background:#1f2020" title="gridLineFine"></div>
+      <div class="label"><code>#1f2020</code><span>gridLineFine</span><span>ΔE 1.2</span></div><div class="bar" data-fs="#212222" style="background:#212222" title="reserveHoverOnSurfaceThem"></div>
+      <div class="label"><code>#212222</code><span>reserveHoverOnSurfaceThem</span><span>ΔE 1.0</span></div><div class="bar" data-fs="#232324" style="background:#232324" title="messagesBubbleThemBg"></div>
+      <div class="label"><code>#232324</code><span>messagesBubbleThemBg</span><span>ΔE 1.1</span></div><div class="bar" data-fs="#232425" style="background:#232425" title="reservePopoverAccentChip, reservePopoverDivider"></div>
+      <div class="label"><code>#232425</code><span>reservePopoverAccentChip · reservePopoverDivider</span><span>ΔE 0.6</span></div><div class="bar" data-fs="#282829" style="background:#282829" title="accentFillSubtleHover"></div>
+      <div class="label"><code>#282829</code><span>accentFillSubtleHover</span><span>ΔE 2.1</span></div><div class="bar" data-fs="#2e2e2f" style="background:#2e2e2f" title="accentTint14OnSurfaceThem"></div>
+      <div class="label"><code>#2e2e2f</code><span>accentTint14OnSurfaceThem</span><span>ΔE 2.8</span></div><div class="bar" data-fs="#303132" style="background:#303132" title="greenDark"></div>
+      <div class="label"><code>#303132</code><span>greenDark</span><span>ΔE 1.4</span></div><div class="bar" data-fs="#343536" style="background:#343536" title="gridLine, accentGreenOverlay20"></div>
+      <div class="label"><code>#343536</code><span>gridLine · accentGreenOverlay20</span><span>ΔE 1.8</span></div><div class="bar" data-fs="#363738" style="background:#363738" title="reservePopoverAccentSelected, accentTint18OnSurfaceThem"></div>
+      <div class="label"><code>#363738</code><span>reservePopoverAccentSelected · accentTint18OnSurfaceThem</span><span>ΔE 0.9</span></div></div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> каждая полоса читается как отдельная ступень там, где ΔE заметно больше 1; порядок ровный, без «провала» и без резкого скачка.
+    <br><strong>Полосы слиплись в 2–3 блока:</strong> поднят чёрный или включён динамический контраст. <strong>Между полосами видны светлые линии:</strong> включён Over Scan / резкость / локальное затемнение — выключить.</p>
+  </div>
+</section>
+
+<section id="ramps">
+  <h2>7. Градиенты: бандинг и дизеринг</h2>
+  <p class="lead">Три перехода: полный серый, тёмный участок палитры (0–48) и основной акцент бренда. Клик — на весь экран.</p>
+  <div class="card">
+    <h3>Серый 0 → 255</h3>
+    <div class="gradient" data-fs="linear-gradient(90deg,#000,#fff)" style="background:linear-gradient(90deg,#000,#fff)"></div>
+    <h3>Тени 0 → 48 (рабочий диапазон Flora)</h3>
+    <div class="gradient" data-fs="linear-gradient(90deg,#000,#303030)" style="background:linear-gradient(90deg,#000,#303030)"></div>
+    <h3>Акцент: #0a0a0a → #dde2e8</h3>
+    <div class="gradient" data-fs="linear-gradient(90deg,#0a0a0a,#dde2e8)" style="background:linear-gradient(90deg,#0a0a0a,#dde2e8)"></div>
+    <h3>1 px линии (резкость / масштаб)</h3>
+    <div class="rough" data-fs="repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 3px) #000"></div>
+    <div style="height:10px"></div>
+    <p class="note"><strong>Норма:</strong> переходы гладкие, без вертикальных «ступеней» и цветных полос на тёмном участке. Полосатость на 0–48 при плавном 0–255 — типичный признак 6-bit + FRC и включённой пост-обработки.
+    <br><strong>Ступени на тенистом градиенте:</strong> отключите SmartContrast / «улучшение изображения» в OSD, проверьте 8 bpc в NVIDIA. <strong>Цветные полосы:</strong> смените пресет цвета (не User Define).</p>
+  </div>
+</section>
+
+<section id="tokens">
+  <h2>8. Токены: эталонные sRGB-заливки</h2>
+  <p class="lead">Все 32 цветовых токенов, отсортированы от тёмных к светлым. Клик — заливка на весь экран; сравнивайте с соседними токенами и с тем, что видно в приложении.</p>
+  <div class="swatches"><button class="swatch" data-fs="#0a0a0a" title="Канонические Flora UI-токены (hex). Источник правды для клиентов: значения из apps/Web/app/globals.css (:root) и предвычисленные color-mix для React Native (без color-mix в рантайме). Палитра — Neutral Black + Cold Silver: два цвета, остальные слоты — уровни серебра на чёрном. Ключи greenLight / greenDark исторические.">
+        <span class="chip" style="background:#0a0a0a"></span>
+        <span>
+          <span class="name">bg</span>
+          <code>#0a0a0a</code>
+          <span class="stats">L* 2.7 · 1.00:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#111111" title="reserveSurfaceThem">
+        <span class="chip" style="background:#111111"></span>
+        <span>
+          <span class="name">reserveSurfaceThem</span>
+          <code>#111111</code>
+          <span class="stats">L* 5.1 · 1.05:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#141415" title="reserveSurfaceThemHover">
+        <span class="chip" style="background:#141415"></span>
+        <span>
+          <span class="name">reserveSurfaceThemHover</span>
+          <code>#141415</code>
+          <span class="stats">L* 6.4 · 1.08:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#171717" title="accentFillSubtle">
+        <span class="chip" style="background:#171717"></span>
+        <span>
+          <span class="name">accentFillSubtle</span>
+          <code>#171717</code>
+          <span class="stats">L* 7.7 · 1.10:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reserveSubstrateTemplate">
+        <span class="chip" style="background:#1b1b1c"></span>
+        <span>
+          <span class="name">reserveSubstrateTemplate</span>
+          <code>#1b1b1c</code>
+          <span class="stats">L* 9.8 · 1.15:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reservePopoverInset">
+        <span class="chip" style="background:#1b1b1c"></span>
+        <span>
+          <span class="name">reservePopoverInset</span>
+          <code>#1b1b1c</code>
+          <span class="stats">L* 9.8 · 1.15:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reserveHoverSurface">
+        <span class="chip" style="background:#1b1b1c"></span>
+        <span>
+          <span class="name">reserveHoverSurface</span>
+          <code>#1b1b1c</code>
+          <span class="stats">L* 9.8 · 1.15:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1c1c1c" title="reserveSubstrateGrayMuted">
+        <span class="chip" style="background:#1c1c1c"></span>
+        <span>
+          <span class="name">reserveSubstrateGrayMuted</span>
+          <code>#1c1c1c</code>
+          <span class="stats">L* 10.3 · 1.16:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1e1e1f" title="color-mix(gray 14%, bg 86%)">
+        <span class="chip" style="background:#1e1e1f"></span>
+        <span>
+          <span class="name">grayDivider</span>
+          <code>#1e1e1f</code>
+          <span class="stats">L* 11.3 · 1.19:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1f2020" title="gridLineFine">
+        <span class="chip" style="background:#1f2020"></span>
+        <span>
+          <span class="name">gridLineFine</span>
+          <code>#1f2020</code>
+          <span class="stats">L* 12.1 · 1.21:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#212222" title="reserveHoverOnSurfaceThem">
+        <span class="chip" style="background:#212222"></span>
+        <span>
+          <span class="name">reserveHoverOnSurfaceThem</span>
+          <code>#212222</code>
+          <span class="stats">L* 13.1 · 1.24:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#232324" title=".messagesBubbleThem background — color-mix chain из globals + messages.module.css. mix(mix(reserve-bubble-them 10%, accent-fill-subtle-hover 90%) 75%, substrate-gray-muted 25%)">
+        <span class="chip" style="background:#232324"></span>
+        <span>
+          <span class="name">messagesBubbleThemBg</span>
+          <code>#232324</code>
+          <span class="stats">L* 13.7 · 1.26:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#232425" title="reservePopoverAccentChip">
+        <span class="chip" style="background:#232425"></span>
+        <span>
+          <span class="name">reservePopoverAccentChip</span>
+          <code>#232425</code>
+          <span class="stats">L* 14.1 · 1.27:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#232425" title="reservePopoverDivider">
+        <span class="chip" style="background:#232425"></span>
+        <span>
+          <span class="name">reservePopoverDivider</span>
+          <code>#232425</code>
+          <span class="stats">L* 14.1 · 1.27:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#282829" title="accentFillSubtleHover">
+        <span class="chip" style="background:#282829"></span>
+        <span>
+          <span class="name">accentFillSubtleHover</span>
+          <code>#282829</code>
+          <span class="stats">L* 16.1 · 1.34:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#2e2e2f" title="14% silver на surface-them — активная вкладка эмодзи">
+        <span class="chip" style="background:#2e2e2f"></span>
+        <span>
+          <span class="name">accentTint14OnSurfaceThem</span>
+          <code>#2e2e2f</code>
+          <span class="stats">L* 19.0 · 1.46:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#303132" title="greenDark">
+        <span class="chip" style="background:#303132"></span>
+        <span>
+          <span class="name">greenDark</span>
+          <code>#303132</code>
+          <span class="stats">L* 20.3 · 1.52:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#343536" title="gridLine">
+        <span class="chip" style="background:#343536"></span>
+        <span>
+          <span class="name">gridLine</span>
+          <code>#343536</code>
+          <span class="stats">L* 22.1 · 1.61:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#343536" title="20% silver + bg — иконки reply/follow в уведомлениях">
+        <span class="chip" style="background:#343536"></span>
+        <span>
+          <span class="name">accentGreenOverlay20</span>
+          <code>#343536</code>
+          <span class="stats">L* 22.1 · 1.61:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#363738" title="reservePopoverAccentSelected">
+        <span class="chip" style="background:#363738"></span>
+        <span>
+          <span class="name">reservePopoverAccentSelected</span>
+          <code>#363738</code>
+          <span class="stats">L* 23.0 · 1.66:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#363738" title="18% silver на surface-them — выбранная категория в рейле">
+        <span class="chip" style="background:#363738"></span>
+        <span>
+          <span class="name">accentTint18OnSurfaceThem</span>
+          <code>#363738</code>
+          <span class="stats">L* 23.0 · 1.66:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#5e6063" title="greenBubble">
+        <span class="chip" style="background:#5e6063"></span>
+        <span>
+          <span class="name">greenBubble</span>
+          <code>#5e6063</code>
+          <span class="stats">L* 40.6 · 3.14:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#e8382c" title="Заливочный сигнал: диагональ блокировки, точка статуса; не текст.">
+        <span class="chip" style="background:#e8382c"></span>
+        <span>
+          <span class="name">signalSolid</span>
+          <code>#e8382c</code>
+          <span class="stats">L* 52.0 · 4.75:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#979a9e" title="gray">
+        <span class="chip" style="background:#979a9e"></span>
+        <span>
+          <span class="name">gray</span>
+          <code>#979a9e</code>
+          <span class="stats">L* 63.5 · 7.01:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#a3a6ab" title="color-mix(messagesBubbleThemText 26%, gray 74%)">
+        <span class="chip" style="background:#a3a6ab"></span>
+        <span>
+          <span class="name">messagesBubbleThemTime</span>
+          <code>#a3a6ab</code>
+          <span class="stats">L* 68.0 · 8.11:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#ff9688" title="Ошибки, деструктивные действия, бейджи, лайки.">
+        <span class="chip" style="background:#ff9688"></span>
+        <span>
+          <span class="name">signal</span>
+          <code>#ff9688</code>
+          <span class="stats">L* 72.8 · 9.40:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#b3b7bc" title="textSecondary">
+        <span class="chip" style="background:#b3b7bc"></span>
+        <span>
+          <span class="name">textSecondary</span>
+          <code>#b3b7bc</code>
+          <span class="stats">L* 74.2 · 9.82:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#b3b7bc" title="grayHover">
+        <span class="chip" style="background:#b3b7bc"></span>
+        <span>
+          <span class="name">grayHover</span>
+          <code>#b3b7bc</code>
+          <span class="stats">L* 74.2 · 9.82:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#c5c9ce" title="color-mix(text-on-bubble 74%, gray 26%)">
+        <span class="chip" style="background:#c5c9ce"></span>
+        <span>
+          <span class="name">messagesBubbleThemText</span>
+          <code>#c5c9ce</code>
+          <span class="stats">L* 80.8 · 11.90:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#d5d9df" title="globals.css --flora-text-on-bubble">
+        <span class="chip" style="background:#d5d9df"></span>
+        <span>
+          <span class="name">textOnBubble</span>
+          <code>#d5d9df</code>
+          <span class="stats">L* 86.6 · 13.97:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#dde2e8" title="whiteTemplate">
+        <span class="chip" style="background:#dde2e8"></span>
+        <span>
+          <span class="name">whiteTemplate</span>
+          <code>#dde2e8</code>
+          <span class="stats">L* 89.7 · 15.20:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#dde2e8" title="greenLight">
+        <span class="chip" style="background:#dde2e8"></span>
+        <span>
+          <span class="name">greenLight</span>
+          <code>#dde2e8</code>
+          <span class="stats">L* 89.7 · 15.20:1 к фону</span>
+          
+        </span>
+      </button></div>
+  <div style="height:12px"></div>
+  <p class="note"><strong>Одинаковые значения (задумано):</strong> <code>#dde2e8</code> — <code>whiteTemplate</code>, <code>greenLight</code>; <code>#b3b7bc</code> — <code>textSecondary</code>, <code>grayHover</code>; <code>#1b1b1c</code> — <code>reserveSubstrateTemplate</code>, <code>reservePopoverInset</code>, <code>reserveHoverSurface</code>; <code>#363738</code> — <code>reservePopoverAccentSelected</code>, <code>accentTint18OnSurfaceThem</code>; <code>#232425</code> — <code>reservePopoverAccentChip</code>, <code>reservePopoverDivider</code>; <code>#343536</code> — <code>gridLine</code>, <code>accentGreenOverlay20</code>.</p>
+  <p class="note"><strong>Только в TS (нет одноимённой переменной в <code>:root</code>):</strong> <code>--flora-messages-bubble-them-bg</code>, <code>--flora-messages-bubble-them-text</code>, <code>--flora-messages-bubble-them-time</code>, <code>--flora-accent-green-overlay20</code>, <code>--flora-accent-tint14-on-surface-them</code>, <code>--flora-accent-tint18-on-surface-them</code>. Значение взято из <code>FLORA_THEME_TOKENS</code>.</p>
+  <p class="note">Контраст указан по WCAG к основному фону. Это расчёт по sRGB, монитор на него не влияет — влияет только на то, различимы ли ступени глазами.</p>
+</section>
+
+<section id="contrast">
+  <h2>9. Контраст рабочих пар</h2>
+  <p class="lead">Теоретические коэффициенты по sRGB для пар, которые встречаются в UI. Эти числа заданы токенами; калибровка монитора не меняет их, но меняет, читаются ли они на практике.</p>
+  <div class="card"><table>
+    <thead><tr><th>Пара</th><th>Hex</th><th>Контраст</th><th>WCAG</th></tr></thead>
+    <tbody><tr>
+        <td>основной текст</td>
+        <td><code>whiteTemplate</code> / <code>bg</code></td>
+        <td class="ratio">15.20:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>приглушённый текст</td>
+        <td><code>gray</code> / <code>bg</code></td>
+        <td class="ratio">7.01:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>акцент, ссылки</td>
+        <td><code>greenLight</code> / <code>bg</code></td>
+        <td class="ratio">15.20:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>сигнал, лайк</td>
+        <td><code>signal</code> / <code>bg</code></td>
+        <td class="ratio">9.40:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>диагональ блокировки</td>
+        <td><code>signalSolid</code> / <code>bg</code></td>
+        <td class="ratio">4.75:1</td>
+        <td><span class="badge">не текст</span></td>
+      </tr><tr>
+        <td>свой пузырь</td>
+        <td><code>textOnBubble</code> / <code>greenBubble</code></td>
+        <td class="ratio">4.45:1</td>
+        <td><span class="badge">только крупный</span></td>
+      </tr><tr>
+        <td>чужой пузырь</td>
+        <td><code>messagesBubbleThemText</code> / <code>messagesBubbleThemBg</code></td>
+        <td class="ratio">9.44:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>время в пузыре</td>
+        <td><code>messagesBubbleThemTime</code> / <code>messagesBubbleThemBg</code></td>
+        <td class="ratio">6.43:1</td>
+        <td><span class="badge pass">AA</span></td>
+      </tr><tr>
+        <td>текст на подложке</td>
+        <td><code>whiteTemplate</code> / <code>reserveHoverSurface</code></td>
+        <td class="ratio">13.21:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>акцент на greenDark</td>
+        <td><code>greenLight</code> / <code>greenDark</code></td>
+        <td class="ratio">10.00:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>иконки на подложке</td>
+        <td><code>gray</code> / <code>reserveSubstrateTemplate</code></td>
+        <td class="ratio">6.09:1</td>
+        <td><span class="badge pass">AA</span></td>
+      </tr><tr>
+        <td>разделитель</td>
+        <td><code>grayDivider</code> / <code>bg</code></td>
+        <td class="ratio">1.19:1</td>
+        <td><span class="badge">не текст</span></td>
+      </tr></tbody>
+  </table></div>
+</section>
+
+<section id="text">
+  <h2>10. Текст, гало и пиксельная сетка</h2>
+  <p class="lead">Реальные размеры Flora: 15 px / 300 с трекингом 0.45 px, 13 px для счётчиков. Проверяются читаемость, «звон» белого на чёрном и отсутствие масштабирования.</p>
+  <div class="cols">
+    <div class="textSample">
+      <div class="s15" style="color:#dde2e8">Проверка строки набора: у глифов должны быть чистые края, без радужного ореола и без размытия.</div>
+      <div style="height:10px"></div>
+      <div class="s13" style="color:#979a9e">Второстепенный текст 13 px — приглушённый, но различимый.</div>
+      <div style="height:12px"></div>
+      <div class="bubble">Пузырь собеседника: фон <code>#232324</code>, текст <code>#c5c9ce</code>.<time>12:48</time></div>
+      <p class="note" style="margin-top:12px">Шрифт страницы — системный (Manrope в офлайне нет); для проверки читаемости этого достаточно, палитра от шрифта не зависит.</p>
+    </div>
+    <div class="card">
+      <h3>Пиксельная сетка</h3>
+      <div class="rough" data-fs="repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 3px) #000"></div>
+      <div style="height:10px"></div>
+      <p class="note"><strong>Норма:</strong> 1 px линии резкие, без двойных контуров; наклонные и вертикальные штрихи текста без цветной каймы.
+      <br><strong>Линии размыты или с радугой:</strong> включено масштабирование (не 100 %), Over Scan или ClearType по не-нативному разрешению. <strong>Белый текст «светится» ореолом:</strong> завышена Sharpness — верните 50.</p>
+      <p class="note"><strong>Полноэкранный режим:</strong> клик по любой плашке/полосе; выход — <kbd>Esc</kbd> или клик.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  Источники: <code>packages/flora-client-core/src/display/floraThemeTokens.ts</code>,
+  <code>apps/Web/app/globals.css</code>, <code>documents/design/color-reference.md</code>.
+  Файл сгенерирован: <code>node tools/monitor-calibration/build.mjs</code>. Руками не править.
+</footer>
+
+<div id="fs" class="fs" hidden></div>
+<script>
+(function () {
+  var overlay = document.getElementById('fs');
+
+  function closeOverlay() {
+    overlay.hidden = true;
+    overlay.className = 'fs';
+    overlay.style.background = '';
+  }
+
+  document.addEventListener('click', function (event) {
+    var target = event.target.closest('[data-fs], [data-fs-pattern]');
+    if (!target || target === overlay) return;
+    var value = target.getAttribute('data-fs');
+    var pattern = target.getAttribute('data-fs-pattern');
+    overlay.className = pattern === 'checker' ? 'fs checker' : 'fs';
+    overlay.style.background = pattern ? '' : value;
+    overlay.hidden = false;
+  });
+
+  overlay.addEventListener('click', closeOverlay);
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !overlay.hidden) closeOverlay();
+  });
+})();
+</script>
+</body>
+</html>

@@ -41,10 +41,12 @@ export function ConversationListSelectionMark({
           height: size,
           borderRadius: size / 2,
           borderWidth,
+          backgroundColor: floraColors.greenLight,
+          borderColor: floraColors.bg,
         },
       ]}
     >
-      <Ionicons name="checkmark" size={Math.round(12 * scale)} color="#10200e" />
+      <Ionicons name="checkmark" size={Math.round(12 * scale)} color="#0a0a0a" />
     </View>
   );
 }
@@ -54,7 +56,5 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: floraColors.greenLight,
-    borderColor: floraColors.bg,
   },
 });

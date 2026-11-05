@@ -41,7 +41,7 @@ export function AuthField({
 }: AuthFieldProps) {
   const sp = useSPx();
   const focusAnim = useRef(new Animated.Value(0)).current;
-  const iconColor = whiteTheme ? floraColors.whiteTemplate : "rgba(250, 250, 250, 0.86)";
+  const iconColor = whiteTheme ? floraColors.whiteTemplate : floraColors.gray;
 
   const setFocused = (focused: boolean) => {
     Animated.timing(focusAnim, {
@@ -66,9 +66,7 @@ export function AuthField({
           <TextInput
             {...inputProps}
             style={[authStyles.fieldInput, whiteTheme ? authStyles.fieldInputWhite : null, style]}
-            placeholderTextColor={
-              whiteTheme ? "rgba(250, 250, 250, 0.68)" : "rgba(143, 143, 143, 0.92)"
-            }
+            placeholderTextColor={floraColors.gray}
             onFocus={(e) => {
               setFocused(true);
               onFocus?.(e);
@@ -88,7 +86,7 @@ export function AuthField({
               <Ionicons
                 name={secureVisible ? "eye-outline" : "eye-off-outline"}
                 size={sp(18)}
-                color={floraColors.whiteTemplate}
+                color={floraColors.gray}
               />
             </Pressable>
           ) : null}

@@ -14,19 +14,31 @@ describe("profileInitials", () => {
 });
 
 describe("resolveDefaultAvatarColor", () => {
-  it("always uses dark green for default avatars", () => {
+  it("always uses graphite for default avatars", () => {
     expect(resolveDefaultAvatarColorId("any-user")).toBe("forest");
-    expect(resolveDefaultAvatarColor("any-user")).toBe("#2c3527");
-    expect(resolveDefaultAvatarColor("")).toBe("#2c3527");
+    expect(resolveDefaultAvatarColor("any-user")).toBe("#303132");
+    expect(resolveDefaultAvatarColor("")).toBe("#303132");
   });
 });
 
 describe("FLORA_THEME_TOKENS", () => {
   it("matches web globals.css core palette", () => {
-    expect(FLORA_THEME_TOKENS.bg).toBe("#0c0c0c");
-    expect(FLORA_THEME_TOKENS.greenLight).toBe("#a4d18a");
-    expect(FLORA_THEME_TOKENS.greenDark).toBe("#2c3527");
-    expect(FLORA_THEME_TOKENS.reserveHoverSurface).toBe("#1f1f1f");
-    expect(FLORA_THEME_TOKENS.messagesBubbleThemBg).toBe("#1e241d");
+    expect(FLORA_THEME_TOKENS.bg).toBe("#0a0a0a");
+    expect(FLORA_THEME_TOKENS.whiteTemplate).toBe("#dde2e8");
+    expect(FLORA_THEME_TOKENS.textSecondary).toBe("#b3b7bc");
+    expect(FLORA_THEME_TOKENS.greenLight).toBe("#dde2e8");
+    expect(FLORA_THEME_TOKENS.greenDark).toBe("#303132");
+    expect(FLORA_THEME_TOKENS.signal).toBe("#ff9688");
+    expect(FLORA_THEME_TOKENS.reserveSubstrateTemplate).toBe("#1b1b1c");
+    expect(FLORA_THEME_TOKENS.reserveSubstrateGrayMuted).toBe("#1c1c1c");
+    expect(FLORA_THEME_TOKENS.reservePopoverInset).toBe("#1b1b1c");
+    expect(FLORA_THEME_TOKENS.reservePopoverDivider).toBe("#232425");
+    expect(FLORA_THEME_TOKENS.reserveHoverSurface).toBe("#1b1b1c");
+    expect(FLORA_THEME_TOKENS.reserveHoverOnSurfaceThem).toBe("#212222");
+    expect(FLORA_THEME_TOKENS.gray).toBe("#979a9e");
+    expect(FLORA_THEME_TOKENS.grayDivider).toBe("#1e1e1f");
+    expect(FLORA_THEME_TOKENS.messagesBubbleThemBg).toBe("#232324");
+    expect(FLORA_THEME_TOKENS.messagesBubbleThemText).toBe("#c5c9ce");
+    expect(FLORA_THEME_TOKENS.messagesBubbleThemTime).toBe("#a3a6ab");
   });
 });

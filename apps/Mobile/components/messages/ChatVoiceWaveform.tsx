@@ -2,7 +2,9 @@ import { liveGridStyles } from "@/lib/liveGridStyles";
 import { useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { floraSpacing, sPx } from "@/lib/theme";
+import { floraSpacing, sPx, floraColors } from "@/lib/theme";
+import { floraTokenAlpha } from "@/lib/floraTheme";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import {
   bucketVoiceWaveformByMax,
   VOICE_BUBBLE_WAVE_BAR_COUNT,
@@ -19,10 +21,11 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-const waveBarMeStyle = { backgroundColor: "rgba(242, 244, 246, 0.58)", opacity: 0.95 } as const;
-const waveBarThemStyle = { backgroundColor: "rgba(164, 209, 138, 0.68)", opacity: 0.9 } as const;
+const WAVE_BAR_ME_ALPHA = 0.58;
+const WAVE_BAR_THEM_ALPHA = 0.68;
 
 export function ChatVoiceWaveform({ levels, isFromMe = true, live = false, style }: Props) {
+  useFloraTheme();
   const bars = useMemo(() => {
     const emptyCount = live ? VOICE_LIVE_WAVE_BAR_COUNT : VOICE_BUBBLE_WAVE_BAR_COUNT;
     if (levels.length === 0) {
@@ -34,7 +37,9 @@ export function ChatVoiceWaveform({ levels, isFromMe = true, live = false, style
     return bucketVoiceWaveformByMax(levels, VOICE_BUBBLE_WAVE_BAR_COUNT);
   }, [levels, live]);
 
-  const toneStyle = isFromMe ? waveBarMeStyle : waveBarThemStyle;
+  const toneStyle = isFromMe
+    ? { backgroundColor: floraTokenAlpha(floraColors.textOnBubble, WAVE_BAR_ME_ALPHA), opacity: 0.95 }
+    : { backgroundColor: floraColors.overlay(WAVE_BAR_THEM_ALPHA), opacity: 0.9 };
 
   return (
     <View style={[styles.waveform, style]} accessibilityElementsHidden>

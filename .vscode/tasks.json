@@ -335,6 +335,34 @@
       }
     },
     {
+      "label": "Flora Android: full native rebuild (dev client)",
+      "detail": "Uninstall Flora Dev, expo prebuild --clean, expo run:android. Нужна после нового нативного модуля (flora-theme-crossfade).",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\mobile-install-debug-android.ps1",
+        "-ReplaceExisting"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": false
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Flora: dev offline demo (dev-token, no API)",
       "dependsOn": [
         "Flora DB: start (Docker)"

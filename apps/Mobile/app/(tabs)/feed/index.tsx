@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiFeedHasNew, apiSearchFeed } from "@flora/client-core/api";
 import { Ionicons } from "@expo/vector-icons";
@@ -62,6 +63,7 @@ function feedKindIndex(kind: FeedKind) {
 }
 
 export default function FeedScreen() {
+  useFloraTheme();
   const sp = useSPx();
   const insets = useSafeAreaInsets();
   const network = useNetworkClass();
@@ -476,8 +478,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     marginTop: 2 * floraSpacing.gridFine,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.28)",
-    backgroundColor: "rgba(164, 209, 138, 0.12)",
+    borderColor: floraColors.overlay(0.28),
+    backgroundColor: floraColors.overlay(0.12),
     paddingHorizontal: sPx(14),
     paddingVertical: sPx(9),
     flexDirection: "row",

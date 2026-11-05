@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { ENERGETIC_OPEN_MS } from "@/lib/energeticSettle";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
@@ -468,6 +469,7 @@ export function ThreadScreen({
    */
   measureFrame?: boolean;
 } = {}) {
+  useFloraTheme();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: windowHeight } = useWindowDimensions();
   /** Исходящий текст — без peer inset (как ChatMessageBubble isFromMe). */
@@ -3579,6 +3581,7 @@ function OverlayRouteShell() {
 }
 
 export default function ThreadRoute() {
+  useFloraTheme();
   const params = useLocalSearchParams<{ conversationUuid?: string }>();
   const conversationUuid = routeParam(params.conversationUuid);
   const overlayOwner = useSyncExternalStore(subscribeChatPush, () =>

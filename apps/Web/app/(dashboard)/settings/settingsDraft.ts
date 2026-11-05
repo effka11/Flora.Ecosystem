@@ -26,6 +26,11 @@ import {
   normalizeProfileStatusForApi,
   validateProfileStatus,
 } from "@/app/(dashboard)/profile/profileStatusValidation";
+import {
+  DEFAULT_WEB_FLORA_THEME_ID,
+  normalizeWebFloraTheme,
+  type WebFloraThemeId,
+} from "@/lib/floraTheme";
 import { isReservedUsername, RESERVED_USERNAME_MESSAGE } from "@/lib/reservedUsernames";
 
 const LOCAL_PREFS_STORAGE_KEY = "flora.userSettings.prefs";
@@ -49,7 +54,7 @@ export type UserSettingsNotificationsDraft = {
 };
 
 export type UserSettingsCustomizationDraft = {
-  theme: "system" | "dark" | "light" | "midnight";
+  theme: WebFloraThemeId;
   animSpeed: "smooth" | "fast" | "reduced";
   enableAnimations: boolean;
   enableBlur: boolean;
@@ -76,7 +81,7 @@ const DEFAULT_NOTIFICATIONS: UserSettingsNotificationsDraft = {
 };
 
 const DEFAULT_CUSTOMIZATION: UserSettingsCustomizationDraft = {
-  theme: "dark",
+  theme: DEFAULT_WEB_FLORA_THEME_ID,
   animSpeed: "smooth",
   enableAnimations: true,
   enableBlur: true,
@@ -132,9 +137,16 @@ export function loadUserSettingsLocalPrefs(): UserSettingsLocalPrefs {
     const raw = window.localStorage.getItem(LOCAL_PREFS_STORAGE_KEY);
     if (!raw) return defaultUserSettingsLocalPrefs();
     const parsed = JSON.parse(raw) as Partial<UserSettingsLocalPrefs>;
+    const customization = { ...DEFAULT_CUSTOMIZATION, ...parsed.customization };
     return {
       notifications: { ...DEFAULT_NOTIFICATIONS, ...parsed.notifications },
-      customization: { ...DEFAULT_CUSTOMIZATION, ...parsed.customization },
+      customization: {
+        ...customization,
+        // Старые `system` / `midnight` больше не существуют — сходятся в dark.
+        theme: normalizeWebFloraTheme(
+          (parsed.customization as { theme?: unknown } | undefined)?.theme,
+        ),
+      },
     };
   } catch {
     return defaultUserSettingsLocalPrefs();

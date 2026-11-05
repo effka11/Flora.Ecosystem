@@ -318,7 +318,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     backgroundColor: "transparent",
   },
   detailsBtnPressed: {
-    borderColor: "rgba(164, 209, 138, 0.3)",
+    borderColor: "rgba(221, 226, 232, 0.3)",
   },
   modalBackdrop: {
     flex: 1,
@@ -333,7 +333,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: floraSpacing.grid,
     backgroundColor: floraColors.surface,
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.12)",
+    borderColor: floraColors.overlay(0.12),
     overflow: "hidden",
   },
   modalHeader: {
@@ -374,11 +374,11 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingVertical: sPx(12),
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(164, 209, 138, 0.4)",
+    borderColor: floraColors.overlay(0.4),
     borderRadius: floraSpacing.gridFine * 2,
   },
   editBtnPressed: {
-    backgroundColor: "rgba(164, 209, 138, 0.1)",
+    backgroundColor: floraColors.overlay(0.1),
   },
   editBtnText: {
     color: floraColors.greenLight,

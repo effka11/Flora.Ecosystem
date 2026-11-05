@@ -31,7 +31,7 @@ export function PhoneNumberField({
   onChange,
   editable = true,
   placeholder = "Не указан",
-  placeholderTextColor = "rgba(250, 250, 250, 0.3)",
+  placeholderTextColor = floraColors.overlay(0.3),
 }: Props) {
   const flag = useMemo(() => {
     const country = formatPhoneDraft(value).country;

@@ -27,7 +27,7 @@ import {
   DEFAULT_MESSAGE_IMAGE_RATIO,
   messageSingleImageSize,
 } from "@/lib/messageMediaGeometry";
-import { floraFeedPost, floraSpacing, sPx } from "@/lib/theme";
+import { floraColors, floraFeedPost, floraSpacing, sPx } from "@/lib/theme";
 
 const MAX_ITEMS = COLLAGE_MAX_ITEMS;
 const GRID = () => floraSpacing.grid;
@@ -457,6 +457,6 @@ const styles = liveGridStyles(() => StyleSheet.create({
     flexWrap: "wrap",
   },
   cell: {
-    backgroundColor: "rgba(250, 250, 250, 0.05)",
+    backgroundColor: floraColors.overlay(0.05),
   },
 }));

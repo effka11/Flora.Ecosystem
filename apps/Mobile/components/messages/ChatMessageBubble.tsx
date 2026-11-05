@@ -1,4 +1,5 @@
 import { useFloraGrid } from "@/lib/FloraGridProvider";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { FloraAvatar } from "@/components/FloraAvatar";
@@ -183,6 +184,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   onPress,
 }: Props) {
   useFloraGrid();
+  useFloraTheme();
   const { width: screenWidth } = useWindowDimensions();
   const layoutCtx = useMemo(
     () => ({

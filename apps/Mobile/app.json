@@ -19,12 +19,12 @@
       "softwareKeyboardLayoutMode": "resize",
       "versionCode": 900012,
       "googleServicesFile": "./google-services.json",
-      "backgroundColor": "#0c0c0c",
+      "backgroundColor": "#0a0a0a",
       "navigationBar": {
-        "backgroundColor": "#0c0c0c"
+        "backgroundColor": "#0a0a0a"
       },
       "adaptiveIcon": {
-        "backgroundColor": "#2c3527",
+        "backgroundColor": "#0a0a0a",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -64,10 +64,10 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0c0c0c",
+          "backgroundColor": "#0a0a0a",
           "imageWidth": 200,
           "dark": {
-            "backgroundColor": "#0c0c0c"
+            "backgroundColor": "#0a0a0a"
           }
         }
       ],
@@ -83,7 +83,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/notification-icon.png",
-          "color": "#2c3527",
+          "color": "#dde2e8",
           "defaultChannel": "messages"
         }
       ],

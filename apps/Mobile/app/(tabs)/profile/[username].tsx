@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { apiFollowUser, apiGetProfile, apiGetProfilePosts, apiUnfollowUser } from "@flora/client-core/api";
 import type { FeedPostDto } from "@flora/client-core/contracts";
@@ -24,6 +25,7 @@ import { useSessionStore } from "@/stores/sessionStore";
 import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 export default function UserProfileScreen() {
+  useFloraTheme();
   const { username: rawUsername } = useLocalSearchParams<{ username: string | string[] }>();
   const username = decodeRouteParam(Array.isArray(rawUsername) ? rawUsername[0] ?? "" : rawUsername ?? "");
   const insets = useSafeAreaInsets();

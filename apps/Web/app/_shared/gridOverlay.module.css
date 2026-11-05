@@ -1,6 +1,7 @@
 ﻿.gridToggle {
   position: fixed;
   top: var(--flora-sPx-14);
+  opacity: 0.999;
   right: var(--flora-sPx-14);
   z-index: 70;
   height: calc(1px * round(32 * var(--flora-grid-s)));

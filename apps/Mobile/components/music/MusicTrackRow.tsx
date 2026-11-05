@@ -1,4 +1,5 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { MusicTrackItem } from "@/lib/music/musicModels";
@@ -15,6 +16,7 @@ type Props = {
 
 export function MusicTrackRow({ track, playing = false, onPress, onDelete }: Props) {
   const sp = useSPx();
+  useFloraTheme();
   return (
     <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={onPress}>
       <View style={[styles.cover, { backgroundColor: track.coverColor }]}>
@@ -60,7 +62,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(250, 250, 250, 0.08)",
+    borderBottomColor: floraColors.overlay(0.08),
   },
   cover: {
     width: sPx(42),

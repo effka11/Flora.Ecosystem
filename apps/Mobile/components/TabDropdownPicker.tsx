@@ -148,7 +148,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     maxWidth: sPx(280),
     borderRadius: sPx(12),
     borderWidth: 1,
-    borderColor: "rgba(250, 250, 250, 0.06)",
+    borderColor: floraColors.overlay(0.06),
     backgroundColor: floraColors.bg,
     padding: floraSpacing.gridFine * 1.5,
     overflow: "hidden",
@@ -165,10 +165,10 @@ const styles = liveGridStyles(() => StyleSheet.create({
     borderRadius: sPx(8),
   },
   menuItemActive: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemPressed: {
-    backgroundColor: "rgba(250, 250, 250, 0.06)",
+    backgroundColor: floraColors.overlay(0.06),
   },
   menuItemLabel: {
     color: floraColors.gray,

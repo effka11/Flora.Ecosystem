@@ -282,7 +282,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(250,250,250,0.1)",
+    borderColor: floraColors.overlay(0.1),
     borderRadius: 2 * floraSpacing.gridFine,
     paddingHorizontal: floraSpacing.grid,
     paddingVertical: floraSpacing.gridFine * 2,
@@ -305,7 +305,7 @@ const styles = liveGridStyles(() => StyleSheet.create({
     paddingHorizontal: floraSpacing.gridFine,
     borderRadius: 2 * floraSpacing.gridFine,
   },
-  rowActive: { backgroundColor: "rgba(164, 209, 138, 0.1)" },
+  rowActive: { backgroundColor: floraColors.overlay(0.1) },
   rowPressed: { opacity: 0.85 },
   rowBody: { flex: 1, minWidth: 0, gap: sPx(2) },
   rowName: {

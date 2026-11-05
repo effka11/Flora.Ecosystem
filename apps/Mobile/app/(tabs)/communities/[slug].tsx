@@ -1,3 +1,4 @@
+import { useFloraTheme } from "@/lib/FloraThemeProvider";
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import {
   apiGetCommunityBySlug,
@@ -38,6 +39,7 @@ import { useEditPost } from "@/lib/useEditPost";
 import { floraColors, floraSpacing, kegl, tracking } from "@/lib/theme";
 
 export default function CommunityScreen() {
+  useFloraTheme();
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string | string[] }>();
   const slug = decodeRouteParam(Array.isArray(rawSlug) ? rawSlug[0] ?? "" : rawSlug ?? "");
   const insets = useSafeAreaInsets();
