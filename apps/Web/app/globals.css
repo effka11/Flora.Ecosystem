@@ -16,10 +16,10 @@
   --flora-on-accent: #0a0a0a;
   /* Текст и иконки внутри серебряного пузыря. */
   --flora-text-on-bubble: #d5d9df;
-  /* Живой тёплый красный — лайки; единственный хроматический акцент интерфейса. */
-  --flora-like: #e8382c;
-  /* Сигнал: ошибки, деструктивные действия, бейджи. */
+  /* Сигнал: ошибки, деструктив, бейджи и лайки. */
   --flora-signal: #ff9688;
+  /* Заливочный сигнал: диагональ блокировки, точка статуса; не текст. */
+  --flora-signal-solid: #e8382c;
 
   /* Резерв: производные уровни серебра на чёрном — только #hex, без alpha. */
   /* 6% silver + 94% bg */
@@ -116,8 +116,8 @@
   --flora-green-dark: var(--flora-accent-dark);
   --flora-on-accent: #0a0a0a;
   --flora-text-on-bubble: #d5d9df;
-  --flora-like: #e8382c;
   --flora-signal: #ff9688;
+  --flora-signal-solid: #e8382c;
   --flora-accent-fill-subtle: #171717;
   --flora-accent-fill-subtle-hover: #282829;
   --flora-green-bubble: #5e6063;
@@ -155,8 +155,8 @@
   --flora-green-dark: var(--flora-accent-dark);
   --flora-on-accent: #f3f5f8;
   --flora-text-on-bubble: #0a0a0a;
-  --flora-like: #e8382c;
   --flora-signal: #c21a14;
+  --flora-signal-solid: #e8382c;
   --flora-accent-fill-subtle: #e5e7ea;
   --flora-accent-fill-subtle-hover: #d2d4d7;
   --flora-green-bubble: #8a8b8d;
@@ -193,8 +193,8 @@
   --flora-green-dark: var(--flora-accent-dark);
   --flora-on-accent: #0a0a0a;
   --flora-text-on-bubble: #fafafa;
-  --flora-like: #e8382c;
   --flora-signal: #ff9688;
+  --flora-signal-solid: #e8382c;
   --flora-accent-fill-subtle: #151814;
   --flora-accent-fill-subtle-hover: #21281e;
   --flora-green-bubble: #495b3e;

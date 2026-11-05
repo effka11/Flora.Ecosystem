@@ -32,7 +32,7 @@ const FLORA_LEGACY_PALETTE: FloraThemeTokens = {
   textSecondary: "#d6d6d6",
   greenLight: "#a4d18a",
   greenDark: "#2c3527",
-  like: "#e8382c",
+  signalSolid: "#e8382c",
   signal: "#ff9688",
 
   accentFillSubtle: "#151814",
@@ -78,7 +78,7 @@ const LIGHT_PALETTE: FloraThemeTokens = {
   textSecondary: "#63686e",
   greenLight: "#0a0a0a",
   greenDark: "#c9cbcd",
-  like: "#e8382c",
+  signalSolid: "#e8382c",
   signal: "#c21a14",
 
   accentFillSubtle: "#e5e7ea",

@@ -6,16 +6,17 @@
 <title>Flora — проверка монитора по токенам</title>
 <style>
   :root {
-    --bg: #0b0a09;
-    --fg: #f6f3ee;
-    --muted: #8c8a87;
-    --accent: #e8e3d9;
-    --like: #e8382c;
-    --surface: #121110;
-    --line: #2d2c2a;
-    --bubble-bg: #252321;
-    --bubble-text: #d9d6d2;
-    --bubble-time: #a09e9a;
+    --bg: #0a0a0a;
+    --fg: #dde2e8;
+    --muted: #979a9e;
+    --accent: #dde2e8;
+    --signal: #ff9688;
+    --signal-solid: #e8382c;
+    --surface: #111111;
+    --line: #232425;
+    --bubble-bg: #232324;
+    --bubble-text: #c5c9ce;
+    --bubble-time: #a3a6ab;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -36,7 +37,7 @@
   h3 { font-size: 15px; margin: 22px 0 8px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
   p { margin: 0 0 12px; }
   .lead { color: var(--muted); max-width: 78ch; }
-  .warn { color: var(--like); }
+  .warn { color: var(--signal); }
   .ok { color: var(--accent); }
   .pill {
     display: inline-block; padding: 2px 8px; border: 1px solid var(--line);
@@ -104,7 +105,7 @@
   td.ratio { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
   .badge { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .badge.pass { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
-  .badge.fail { color: var(--like); border-color: color-mix(in srgb, var(--like) 45%, var(--bg)); }
+  .badge.fail { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, var(--bg)); }
   .textSample { background: var(--bg); padding: 16px; border: 1px solid var(--line); }
   .textSample .s15 { font-size: 15px; font-weight: 300; letter-spacing: .45px; line-height: 1.7; }
   .textSample .s13 { font-size: 13px; color: var(--muted); }
@@ -141,10 +142,10 @@
     и пост-обработку. Абсолютная точность (ΔE) — только аппаратный калибратор + ICC-профиль.
   </p>
   <div>
-    <span class="pill">токенов: 30</span>
+    <span class="pill">токенов: 32</span>
     <span class="pill">бренд-цветов сверено с color-reference.md: 4/4</span>
     <span class="pill">CSS↔TS расхождений: 0</span>
-    <span class="pill">сгенерировано: 1 ноября 2026 г. в 19:58</span>
+    <span class="pill">сгенерировано: 6 ноября 2026 г. в 01:25</span>
   </div>
 </div></header>
 
@@ -262,39 +263,39 @@
     <div style="height:8px"></div>
     <div class="patchRow">
       <div class="patch" data-fs="#808080" style="background:#808080;height:90px" title="нейтральный эталон 50%"></div>
-      <div class="patch" data-fs="#f6f3ee" style="background:#f6f3ee;height:90px" title="whiteTemplate"></div>
-      <div class="patch" data-fs="#0b0a09" style="background:#0b0a09;height:90px" title="bg"></div>
-      <div class="patch" data-fs="#e8e3d9" style="background:#e8e3d9;height:90px" title="accent"></div>
-      <div class="patch" data-fs="#e8382c" style="background:#e8382c;height:90px" title="like"></div>
+      <div class="patch" data-fs="#dde2e8" style="background:#dde2e8;height:90px" title="whiteTemplate"></div>
+      <div class="patch" data-fs="#0a0a0a" style="background:#0a0a0a;height:90px" title="bg"></div>
+      <div class="patch" data-fs="#dde2e8" style="background:#dde2e8;height:90px" title="accent"></div>
+      <div class="patch" data-fs="#ff9688" style="background:#ff9688;height:90px" title="signal"></div>
+      <div class="patch" data-fs="#e8382c" style="background:#e8382c;height:90px" title="signal-solid"></div>
     </div>
     <div style="height:10px"></div>
-    <p class="note"><strong>Норма:</strong> клин нейтральный от теней до светов, белый — белый, без розового/зелёного/синего ухода. Ниже — нейтральный эталон 50 % и фактические бренд-заливки <code>whiteTemplate</code>, <code>bg</code>, <code>accent</code>, <code>like</code>.
+    <p class="note"><strong>Норма:</strong> клин нейтральный от теней до светов, белый — белый, без розового/зелёного/синего ухода. Ниже — нейтральный эталон 50 % и фактические бренд-заливки <code>whiteTemplate</code>, <code>bg</code>, <code>accent</code>, <code>signal</code>, <code>signal-solid</code>.
     <br><strong>Серый уходит в зелень или маджету:</strong> смените пресет 6500 K / sRGB, не «лечите» RGB-слайдерами. <strong>Белый кажется тёплым:</strong> проверьте, что Night Light и LowBlue выключены, затем верните пресет цвета.</p>
   </div>
 </section>
 
 <section id="darks">
   <h2>6. Тёмная лестница токенов</h2>
-  <p class="lead">Flora живёт в тенях: фон <code>#0b0a09</code>, подложки и пузыри отличаются на единицы sRGB. Здесь проверяется, что монитор не схлопывает эти ступени и не рисует лишних границ. ΔE — расстояние в Lab (CIE76) до предыдущей ступени: значения ниже 1 глазом почти не различаются и задуманы как «одна поверхность».</p>
+  <p class="lead">Flora живёт в тенях: фон <code>#0a0a0a</code>, подложки и пузыри отличаются на единицы sRGB. Здесь проверяется, что монитор не схлопывает эти ступени и не рисует лишних границ. ΔE — расстояние в Lab (CIE76) до предыдущей ступени: значения ниже 1 глазом почти не различаются и задуманы как «одна поверхность».</p>
   <div class="card">
-    <div class="ladder"><div class="bar" data-fs="#0b0a09" style="background:#0b0a09" title="bg"></div>
-      <div class="label"><code>#0b0a09</code><span>bg</span></div><div class="bar" data-fs="#121110" style="background:#121110" title="reserveSurfaceThem"></div>
-      <div class="label"><code>#121110</code><span>reserveSurfaceThem</span><span>ΔE 2.3</span></div><div class="bar" data-fs="#161413" style="background:#161413" title="reserveSurfaceThemHover"></div>
-      <div class="label"><code>#161413</code><span>reserveSurfaceThemHover</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#181715" style="background:#181715" title="accentFillSubtle"></div>
-      <div class="label"><code>#181715</code><span>accentFillSubtle</span><span>ΔE 1.6</span></div><div class="bar" data-fs="#1c1b19" style="background:#1c1b19" title="reserveSubstrateGrayMuted"></div>
-      <div class="label"><code>#1c1b19</code><span>reserveSubstrateGrayMuted</span><span>ΔE 2.0</span></div><div class="bar" data-fs="#1d1c1b" style="background:#1d1c1b" title="reservePopoverInset, grayDivider"></div>
-      <div class="label"><code>#1d1c1b</code><span>reservePopoverInset · grayDivider</span><span>ΔE 0.9</span></div><div class="bar" data-fs="#1e1d1b" style="background:#1e1d1b" title="reserveSubstrateTemplate, reserveHoverSurface"></div>
-      <div class="label"><code>#1e1d1b</code><span>reserveSubstrateTemplate · reserveHoverSurface</span><span>ΔE 0.9</span></div><div class="bar" data-fs="#21201e" style="background:#21201e" title="gridLineFine"></div>
-      <div class="label"><code>#21201e</code><span>gridLineFine</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#242321" style="background:#242321" title="reserveHoverOnSurfaceThem"></div>
-      <div class="label"><code>#242321</code><span>reserveHoverOnSurfaceThem</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#252321" style="background:#252321" title="messagesBubbleThemBg"></div>
-      <div class="label"><code>#252321</code><span>messagesBubbleThemBg</span><span>ΔE 0.5</span></div><div class="bar" data-fs="#2a2622" style="background:#2a2622" title="greenDark"></div>
-      <div class="label"><code>#2a2622</code><span>greenDark</span><span>ΔE 2.4</span></div><div class="bar" data-fs="#2a2826" style="background:#2a2826" title="accentFillSubtleHover"></div>
-      <div class="label"><code>#2a2826</code><span>accentFillSubtleHover</span><span>ΔE 1.9</span></div><div class="bar" data-fs="#2c2a28" style="background:#2c2a28" title="reservePopoverAccentChip"></div>
-      <div class="label"><code>#2c2a28</code><span>reservePopoverAccentChip</span><span>ΔE 0.9</span></div><div class="bar" data-fs="#2d2c2a" style="background:#2d2c2a" title="reservePopoverDivider"></div>
-      <div class="label"><code>#2d2c2a</code><span>reservePopoverDivider</span><span>ΔE 1.0</span></div><div class="bar" data-fs="#302e2c" style="background:#302e2c" title="accentTint14OnSurfaceThem"></div>
-      <div class="label"><code>#302e2c</code><span>accentTint14OnSurfaceThem</span><span>ΔE 1.1</span></div><div class="bar" data-fs="#373533" style="background:#373533" title="gridLine, accentGreenOverlay20"></div>
-      <div class="label"><code>#373533</code><span>gridLine · accentGreenOverlay20</span><span>ΔE 3.2</span></div><div class="bar" data-fs="#393734" style="background:#393734" title="reservePopoverAccentSelected, accentTint18OnSurfaceThem"></div>
-      <div class="label"><code>#393734</code><span>reservePopoverAccentSelected · accentTint18OnSurfaceThem</span><span>ΔE 1.1</span></div></div>
+    <div class="ladder"><div class="bar" data-fs="#0a0a0a" style="background:#0a0a0a" title="bg"></div>
+      <div class="label"><code>#0a0a0a</code><span>bg</span></div><div class="bar" data-fs="#111111" style="background:#111111" title="reserveSurfaceThem"></div>
+      <div class="label"><code>#111111</code><span>reserveSurfaceThem</span><span>ΔE 2.3</span></div><div class="bar" data-fs="#141415" style="background:#141415" title="reserveSurfaceThemHover"></div>
+      <div class="label"><code>#141415</code><span>reserveSurfaceThemHover</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#171717" style="background:#171717" title="accentFillSubtle"></div>
+      <div class="label"><code>#171717</code><span>accentFillSubtle</span><span>ΔE 1.5</span></div><div class="bar" data-fs="#1b1b1c" style="background:#1b1b1c" title="reserveSubstrateTemplate, reservePopoverInset, reserveHoverSurface"></div>
+      <div class="label"><code>#1b1b1c</code><span>reserveSubstrateTemplate · reservePopoverInset · reserveHoverSurface</span><span>ΔE 2.2</span></div><div class="bar" data-fs="#1c1c1c" style="background:#1c1c1c" title="reserveSubstrateGrayMuted"></div>
+      <div class="label"><code>#1c1c1c</code><span>reserveSubstrateGrayMuted</span><span>ΔE 0.9</span></div><div class="bar" data-fs="#1e1e1f" style="background:#1e1e1f" title="grayDivider"></div>
+      <div class="label"><code>#1e1e1f</code><span>grayDivider</span><span>ΔE 1.3</span></div><div class="bar" data-fs="#1f2020" style="background:#1f2020" title="gridLineFine"></div>
+      <div class="label"><code>#1f2020</code><span>gridLineFine</span><span>ΔE 1.2</span></div><div class="bar" data-fs="#212222" style="background:#212222" title="reserveHoverOnSurfaceThem"></div>
+      <div class="label"><code>#212222</code><span>reserveHoverOnSurfaceThem</span><span>ΔE 1.0</span></div><div class="bar" data-fs="#232324" style="background:#232324" title="messagesBubbleThemBg"></div>
+      <div class="label"><code>#232324</code><span>messagesBubbleThemBg</span><span>ΔE 1.1</span></div><div class="bar" data-fs="#232425" style="background:#232425" title="reservePopoverAccentChip, reservePopoverDivider"></div>
+      <div class="label"><code>#232425</code><span>reservePopoverAccentChip · reservePopoverDivider</span><span>ΔE 0.6</span></div><div class="bar" data-fs="#282829" style="background:#282829" title="accentFillSubtleHover"></div>
+      <div class="label"><code>#282829</code><span>accentFillSubtleHover</span><span>ΔE 2.1</span></div><div class="bar" data-fs="#2e2e2f" style="background:#2e2e2f" title="accentTint14OnSurfaceThem"></div>
+      <div class="label"><code>#2e2e2f</code><span>accentTint14OnSurfaceThem</span><span>ΔE 2.8</span></div><div class="bar" data-fs="#303132" style="background:#303132" title="greenDark"></div>
+      <div class="label"><code>#303132</code><span>greenDark</span><span>ΔE 1.4</span></div><div class="bar" data-fs="#343536" style="background:#343536" title="gridLine, accentGreenOverlay20"></div>
+      <div class="label"><code>#343536</code><span>gridLine · accentGreenOverlay20</span><span>ΔE 1.8</span></div><div class="bar" data-fs="#363738" style="background:#363738" title="reservePopoverAccentSelected, accentTint18OnSurfaceThem"></div>
+      <div class="label"><code>#363738</code><span>reservePopoverAccentSelected · accentTint18OnSurfaceThem</span><span>ΔE 0.9</span></div></div>
     <div style="height:10px"></div>
     <p class="note"><strong>Норма:</strong> каждая полоса читается как отдельная ступень там, где ΔE заметно больше 1; порядок ровный, без «провала» и без резкого скачка.
     <br><strong>Полосы слиплись в 2–3 блока:</strong> поднят чёрный или включён динамический контраст. <strong>Между полосами видны светлые линии:</strong> включён Over Scan / резкость / локальное затемнение — выключить.</p>
@@ -309,8 +310,8 @@
     <div class="gradient" data-fs="linear-gradient(90deg,#000,#fff)" style="background:linear-gradient(90deg,#000,#fff)"></div>
     <h3>Тени 0 → 48 (рабочий диапазон Flora)</h3>
     <div class="gradient" data-fs="linear-gradient(90deg,#000,#303030)" style="background:linear-gradient(90deg,#000,#303030)"></div>
-    <h3>Акцент: #0b0a09 → #e8e3d9</h3>
-    <div class="gradient" data-fs="linear-gradient(90deg,#0b0a09,#e8e3d9)" style="background:linear-gradient(90deg,#0b0a09,#e8e3d9)"></div>
+    <h3>Акцент: #0a0a0a → #dde2e8</h3>
+    <div class="gradient" data-fs="linear-gradient(90deg,#0a0a0a,#dde2e8)" style="background:linear-gradient(90deg,#0a0a0a,#dde2e8)"></div>
     <h3>1 px линии (резкость / масштаб)</h3>
     <div class="rough" data-fs="repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 3px) #000"></div>
     <div style="height:10px"></div>
@@ -321,250 +322,266 @@
 
 <section id="tokens">
   <h2>8. Токены: эталонные sRGB-заливки</h2>
-  <p class="lead">Все 30 цветовых токенов, отсортированы от тёмных к светлым. Клик — заливка на весь экран; сравнивайте с соседними токенами и с тем, что видно в приложении.</p>
-  <div class="swatches"><button class="swatch" data-fs="#0b0a09" title="Канонические Flora UI-токены (hex). Источник правды для клиентов: значения из apps/Web/app/globals.css (:root) и предвычисленные color-mix для React Native (без color-mix в рантайме). Палитра — монохром «Графит и фарфор». Ключи greenLight / greenDark исторические: в них лежат платиновый акцент и графитовая заливка.">
-        <span class="chip" style="background:#0b0a09"></span>
+  <p class="lead">Все 32 цветовых токенов, отсортированы от тёмных к светлым. Клик — заливка на весь экран; сравнивайте с соседними токенами и с тем, что видно в приложении.</p>
+  <div class="swatches"><button class="swatch" data-fs="#0a0a0a" title="Канонические Flora UI-токены (hex). Источник правды для клиентов: значения из apps/Web/app/globals.css (:root) и предвычисленные color-mix для React Native (без color-mix в рантайме). Палитра — Neutral Black + Cold Silver: два цвета, остальные слоты — уровни серебра на чёрном. Ключи greenLight / greenDark исторические.">
+        <span class="chip" style="background:#0a0a0a"></span>
         <span>
           <span class="name">bg</span>
-          <code>#0b0a09</code>
-          <span class="stats">L* 2.8 · 1.00:1 к фону</span>
+          <code>#0a0a0a</code>
+          <span class="stats">L* 2.7 · 1.00:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#121110" title="reserveSurfaceThem">
-        <span class="chip" style="background:#121110"></span>
+      </button><button class="swatch" data-fs="#111111" title="reserveSurfaceThem">
+        <span class="chip" style="background:#111111"></span>
         <span>
           <span class="name">reserveSurfaceThem</span>
-          <code>#121110</code>
+          <code>#111111</code>
           <span class="stats">L* 5.1 · 1.05:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#161413" title="reserveSurfaceThemHover">
-        <span class="chip" style="background:#161413"></span>
+      </button><button class="swatch" data-fs="#141415" title="reserveSurfaceThemHover">
+        <span class="chip" style="background:#141415"></span>
         <span>
           <span class="name">reserveSurfaceThemHover</span>
-          <code>#161413</code>
-          <span class="stats">L* 6.5 · 1.08:1 к фону</span>
+          <code>#141415</code>
+          <span class="stats">L* 6.4 · 1.08:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#181715" title="accentFillSubtle">
-        <span class="chip" style="background:#181715"></span>
+      </button><button class="swatch" data-fs="#171717" title="accentFillSubtle">
+        <span class="chip" style="background:#171717"></span>
         <span>
           <span class="name">accentFillSubtle</span>
-          <code>#181715</code>
-          <span class="stats">L* 7.8 · 1.10:1 к фону</span>
+          <code>#171717</code>
+          <span class="stats">L* 7.7 · 1.10:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#1c1b19" title="reserveSubstrateGrayMuted">
-        <span class="chip" style="background:#1c1b19"></span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reserveSubstrateTemplate">
+        <span class="chip" style="background:#1b1b1c"></span>
         <span>
-          <span class="name">reserveSubstrateGrayMuted</span>
-          <code>#1c1b19</code>
+          <span class="name">reserveSubstrateTemplate</span>
+          <code>#1b1b1c</code>
           <span class="stats">L* 9.8 · 1.15:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#1d1c1b" title="reservePopoverInset">
-        <span class="chip" style="background:#1d1c1b"></span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reservePopoverInset">
+        <span class="chip" style="background:#1b1b1c"></span>
         <span>
           <span class="name">reservePopoverInset</span>
-          <code>#1d1c1b</code>
-          <span class="stats">L* 10.3 · 1.16:1 к фону</span>
+          <code>#1b1b1c</code>
+          <span class="stats">L* 9.8 · 1.15:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#1d1c1b" title="color-mix(gray 14%, bg 86%)">
-        <span class="chip" style="background:#1d1c1b"></span>
-        <span>
-          <span class="name">grayDivider</span>
-          <code>#1d1c1b</code>
-          <span class="stats">L* 10.3 · 1.16:1 к фону</span>
-          
-        </span>
-      </button><button class="swatch" data-fs="#1e1d1b" title="reserveSubstrateTemplate">
-        <span class="chip" style="background:#1e1d1b"></span>
-        <span>
-          <span class="name">reserveSubstrateTemplate</span>
-          <code>#1e1d1b</code>
-          <span class="stats">L* 10.8 · 1.17:1 к фону</span>
-          
-        </span>
-      </button><button class="swatch" data-fs="#1e1d1b" title="reserveHoverSurface">
-        <span class="chip" style="background:#1e1d1b"></span>
+      </button><button class="swatch" data-fs="#1b1b1c" title="reserveHoverSurface">
+        <span class="chip" style="background:#1b1b1c"></span>
         <span>
           <span class="name">reserveHoverSurface</span>
-          <code>#1e1d1b</code>
-          <span class="stats">L* 10.8 · 1.17:1 к фону</span>
+          <code>#1b1b1c</code>
+          <span class="stats">L* 9.8 · 1.15:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#21201e" title="gridLineFine">
-        <span class="chip" style="background:#21201e"></span>
+      </button><button class="swatch" data-fs="#1c1c1c" title="reserveSubstrateGrayMuted">
+        <span class="chip" style="background:#1c1c1c"></span>
+        <span>
+          <span class="name">reserveSubstrateGrayMuted</span>
+          <code>#1c1c1c</code>
+          <span class="stats">L* 10.3 · 1.16:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1e1e1f" title="color-mix(gray 14%, bg 86%)">
+        <span class="chip" style="background:#1e1e1f"></span>
+        <span>
+          <span class="name">grayDivider</span>
+          <code>#1e1e1f</code>
+          <span class="stats">L* 11.3 · 1.19:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#1f2020" title="gridLineFine">
+        <span class="chip" style="background:#1f2020"></span>
         <span>
           <span class="name">gridLineFine</span>
-          <code>#21201e</code>
-          <span class="stats">L* 12.3 · 1.22:1 к фону</span>
+          <code>#1f2020</code>
+          <span class="stats">L* 12.1 · 1.21:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#242321" title="reserveHoverOnSurfaceThem">
-        <span class="chip" style="background:#242321"></span>
+      </button><button class="swatch" data-fs="#212222" title="reserveHoverOnSurfaceThem">
+        <span class="chip" style="background:#212222"></span>
         <span>
           <span class="name">reserveHoverOnSurfaceThem</span>
-          <code>#242321</code>
-          <span class="stats">L* 13.8 · 1.26:1 к фону</span>
+          <code>#212222</code>
+          <span class="stats">L* 13.1 · 1.24:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#252321" title=".messagesBubbleThem background — color-mix chain из globals + messages.module.css. mix(mix(reserve-bubble-them 10%, accent-fill-subtle-hover 90%) 75%, substrate-gray-muted 25%)">
-        <span class="chip" style="background:#252321"></span>
+      </button><button class="swatch" data-fs="#232324" title=".messagesBubbleThem background — color-mix chain из globals + messages.module.css. mix(mix(reserve-bubble-them 10%, accent-fill-subtle-hover 90%) 75%, substrate-gray-muted 25%)">
+        <span class="chip" style="background:#232324"></span>
         <span>
           <span class="name">messagesBubbleThemBg</span>
-          <code>#252321</code>
-          <span class="stats">L* 13.9 · 1.26:1 к фону</span>
+          <code>#232324</code>
+          <span class="stats">L* 13.7 · 1.26:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#2a2622" title="greenDark">
-        <span class="chip" style="background:#2a2622"></span>
-        <span>
-          <span class="name">greenDark</span>
-          <code>#2a2622</code>
-          <span class="stats">L* 15.5 · 1.32:1 к фону</span>
-          
-        </span>
-      </button><button class="swatch" data-fs="#2a2826" title="accentFillSubtleHover">
-        <span class="chip" style="background:#2a2826"></span>
-        <span>
-          <span class="name">accentFillSubtleHover</span>
-          <code>#2a2826</code>
-          <span class="stats">L* 16.3 · 1.35:1 к фону</span>
-          
-        </span>
-      </button><button class="swatch" data-fs="#2c2a28" title="reservePopoverAccentChip">
-        <span class="chip" style="background:#2c2a28"></span>
+      </button><button class="swatch" data-fs="#232425" title="reservePopoverAccentChip">
+        <span class="chip" style="background:#232425"></span>
         <span>
           <span class="name">reservePopoverAccentChip</span>
-          <code>#2c2a28</code>
-          <span class="stats">L* 17.2 · 1.38:1 к фону</span>
+          <code>#232425</code>
+          <span class="stats">L* 14.1 · 1.27:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#2d2c2a" title="reservePopoverDivider">
-        <span class="chip" style="background:#2d2c2a"></span>
+      </button><button class="swatch" data-fs="#232425" title="reservePopoverDivider">
+        <span class="chip" style="background:#232425"></span>
         <span>
           <span class="name">reservePopoverDivider</span>
-          <code>#2d2c2a</code>
-          <span class="stats">L* 18.0 · 1.42:1 к фону</span>
+          <code>#232425</code>
+          <span class="stats">L* 14.1 · 1.27:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#302e2c" title="14% accent на surface-them — активная вкладка эмодзи">
-        <span class="chip" style="background:#302e2c"></span>
+      </button><button class="swatch" data-fs="#282829" title="accentFillSubtleHover">
+        <span class="chip" style="background:#282829"></span>
+        <span>
+          <span class="name">accentFillSubtleHover</span>
+          <code>#282829</code>
+          <span class="stats">L* 16.1 · 1.34:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#2e2e2f" title="14% silver на surface-them — активная вкладка эмодзи">
+        <span class="chip" style="background:#2e2e2f"></span>
         <span>
           <span class="name">accentTint14OnSurfaceThem</span>
-          <code>#302e2c</code>
-          <span class="stats">L* 19.1 · 1.46:1 к фону</span>
+          <code>#2e2e2f</code>
+          <span class="stats">L* 19.0 · 1.46:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#373533" title="gridLine">
-        <span class="chip" style="background:#373533"></span>
+      </button><button class="swatch" data-fs="#303132" title="greenDark">
+        <span class="chip" style="background:#303132"></span>
+        <span>
+          <span class="name">greenDark</span>
+          <code>#303132</code>
+          <span class="stats">L* 20.3 · 1.52:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#343536" title="gridLine">
+        <span class="chip" style="background:#343536"></span>
         <span>
           <span class="name">gridLine</span>
-          <code>#373533</code>
-          <span class="stats">L* 22.3 · 1.62:1 к фону</span>
+          <code>#343536</code>
+          <span class="stats">L* 22.1 · 1.61:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#373533" title="20% accent + bg — иконки reply/follow в уведомлениях">
-        <span class="chip" style="background:#373533"></span>
+      </button><button class="swatch" data-fs="#343536" title="20% silver + bg — иконки reply/follow в уведомлениях">
+        <span class="chip" style="background:#343536"></span>
         <span>
           <span class="name">accentGreenOverlay20</span>
-          <code>#373533</code>
-          <span class="stats">L* 22.3 · 1.62:1 к фону</span>
+          <code>#343536</code>
+          <span class="stats">L* 22.1 · 1.61:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#393734" title="reservePopoverAccentSelected">
-        <span class="chip" style="background:#393734"></span>
+      </button><button class="swatch" data-fs="#363738" title="reservePopoverAccentSelected">
+        <span class="chip" style="background:#363738"></span>
         <span>
           <span class="name">reservePopoverAccentSelected</span>
-          <code>#393734</code>
-          <span class="stats">L* 23.2 · 1.67:1 к фону</span>
+          <code>#363738</code>
+          <span class="stats">L* 23.0 · 1.66:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#393734" title="18% accent на surface-them — выбранная категория в рейле">
-        <span class="chip" style="background:#393734"></span>
+      </button><button class="swatch" data-fs="#363738" title="18% silver на surface-them — выбранная категория в рейле">
+        <span class="chip" style="background:#363738"></span>
         <span>
           <span class="name">accentTint18OnSurfaceThem</span>
-          <code>#393734</code>
-          <span class="stats">L* 23.2 · 1.67:1 к фону</span>
+          <code>#363738</code>
+          <span class="stats">L* 23.0 · 1.66:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#63615c" title="greenBubble">
-        <span class="chip" style="background:#63615c"></span>
+      </button><button class="swatch" data-fs="#5e6063" title="greenBubble">
+        <span class="chip" style="background:#5e6063"></span>
         <span>
           <span class="name">greenBubble</span>
-          <code>#63615c</code>
-          <span class="stats">L* 41.2 · 3.20:1 к фону</span>
+          <code>#5e6063</code>
+          <span class="stats">L* 40.6 · 3.14:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#e8382c" title="like">
+      </button><button class="swatch" data-fs="#e8382c" title="Заливочный сигнал: диагональ блокировки, точка статуса; не текст.">
         <span class="chip" style="background:#e8382c"></span>
         <span>
-          <span class="name">like</span>
+          <span class="name">signalSolid</span>
           <code>#e8382c</code>
-          <span class="stats">L* 52.0 · 4.74:1 к фону</span>
+          <span class="stats">L* 52.0 · 4.75:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#8c8a87" title="gray">
-        <span class="chip" style="background:#8c8a87"></span>
+      </button><button class="swatch" data-fs="#979a9e" title="gray">
+        <span class="chip" style="background:#979a9e"></span>
         <span>
           <span class="name">gray</span>
-          <code>#8c8a87</code>
-          <span class="stats">L* 57.6 · 5.75:1 к фону</span>
+          <code>#979a9e</code>
+          <span class="stats">L* 63.5 · 7.01:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#a09e9a" title="color-mix(messagesBubbleThemText 26%, gray 74%)">
-        <span class="chip" style="background:#a09e9a"></span>
+      </button><button class="swatch" data-fs="#a3a6ab" title="color-mix(messagesBubbleThemText 26%, gray 74%)">
+        <span class="chip" style="background:#a3a6ab"></span>
         <span>
           <span class="name">messagesBubbleThemTime</span>
-          <code>#a09e9a</code>
-          <span class="stats">L* 65.2 · 7.40:1 к фону</span>
+          <code>#a3a6ab</code>
+          <span class="stats">L* 68.0 · 8.11:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#d3d0cc" title="grayHover">
-        <span class="chip" style="background:#d3d0cc"></span>
+      </button><button class="swatch" data-fs="#ff9688" title="Ошибки, деструктивные действия, бейджи, лайки.">
+        <span class="chip" style="background:#ff9688"></span>
+        <span>
+          <span class="name">signal</span>
+          <code>#ff9688</code>
+          <span class="stats">L* 72.8 · 9.40:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#b3b7bc" title="textSecondary">
+        <span class="chip" style="background:#b3b7bc"></span>
+        <span>
+          <span class="name">textSecondary</span>
+          <code>#b3b7bc</code>
+          <span class="stats">L* 74.2 · 9.82:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#b3b7bc" title="grayHover">
+        <span class="chip" style="background:#b3b7bc"></span>
         <span>
           <span class="name">grayHover</span>
-          <code>#d3d0cc</code>
-          <span class="stats">L* 83.6 · 12.87:1 к фону</span>
+          <code>#b3b7bc</code>
+          <span class="stats">L* 74.2 · 9.82:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#d9d6d2" title="color-mix(text-on-bubble 74%, gray 26%)">
-        <span class="chip" style="background:#d9d6d2"></span>
+      </button><button class="swatch" data-fs="#c5c9ce" title="color-mix(text-on-bubble 74%, gray 26%)">
+        <span class="chip" style="background:#c5c9ce"></span>
         <span>
           <span class="name">messagesBubbleThemText</span>
-          <code>#d9d6d2</code>
-          <span class="stats">L* 85.8 · 13.66:1 к фону</span>
+          <code>#c5c9ce</code>
+          <span class="stats">L* 80.8 · 11.90:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#e8e3d9" title="greenLight">
-        <span class="chip" style="background:#e8e3d9"></span>
-        <span>
-          <span class="name">greenLight</span>
-          <code>#e8e3d9</code>
-          <span class="stats">L* 90.4 · 15.47:1 к фону</span>
-          
-        </span>
-      </button><button class="swatch" data-fs="#f4f1ec" title="globals.css --flora-text-on-bubble">
-        <span class="chip" style="background:#f4f1ec"></span>
+      </button><button class="swatch" data-fs="#d5d9df" title="globals.css --flora-text-on-bubble">
+        <span class="chip" style="background:#d5d9df"></span>
         <span>
           <span class="name">textOnBubble</span>
-          <code>#f4f1ec</code>
-          <span class="stats">L* 95.2 · 17.56:1 к фону</span>
+          <code>#d5d9df</code>
+          <span class="stats">L* 86.6 · 13.97:1 к фону</span>
           
         </span>
-      </button><button class="swatch" data-fs="#f6f3ee" title="whiteTemplate">
-        <span class="chip" style="background:#f6f3ee"></span>
+      </button><button class="swatch" data-fs="#dde2e8" title="whiteTemplate">
+        <span class="chip" style="background:#dde2e8"></span>
         <span>
           <span class="name">whiteTemplate</span>
-          <code>#f6f3ee</code>
-          <span class="stats">L* 95.9 · 17.87:1 к фону</span>
+          <code>#dde2e8</code>
+          <span class="stats">L* 89.7 · 15.20:1 к фону</span>
+          
+        </span>
+      </button><button class="swatch" data-fs="#dde2e8" title="greenLight">
+        <span class="chip" style="background:#dde2e8"></span>
+        <span>
+          <span class="name">greenLight</span>
+          <code>#dde2e8</code>
+          <span class="stats">L* 89.7 · 15.20:1 к фону</span>
           
         </span>
       </button></div>
   <div style="height:12px"></div>
-  <p class="note"><strong>Одинаковые значения (задумано):</strong> <code>#1e1d1b</code> — <code>reserveSubstrateTemplate</code>, <code>reserveHoverSurface</code>; <code>#1d1c1b</code> — <code>reservePopoverInset</code>, <code>grayDivider</code>; <code>#393734</code> — <code>reservePopoverAccentSelected</code>, <code>accentTint18OnSurfaceThem</code>; <code>#373533</code> — <code>gridLine</code>, <code>accentGreenOverlay20</code>.</p>
+  <p class="note"><strong>Одинаковые значения (задумано):</strong> <code>#dde2e8</code> — <code>whiteTemplate</code>, <code>greenLight</code>; <code>#b3b7bc</code> — <code>textSecondary</code>, <code>grayHover</code>; <code>#1b1b1c</code> — <code>reserveSubstrateTemplate</code>, <code>reservePopoverInset</code>, <code>reserveHoverSurface</code>; <code>#363738</code> — <code>reservePopoverAccentSelected</code>, <code>accentTint18OnSurfaceThem</code>; <code>#232425</code> — <code>reservePopoverAccentChip</code>, <code>reservePopoverDivider</code>; <code>#343536</code> — <code>gridLine</code>, <code>accentGreenOverlay20</code>.</p>
   <p class="note"><strong>Только в TS (нет одноимённой переменной в <code>:root</code>):</strong> <code>--flora-messages-bubble-them-bg</code>, <code>--flora-messages-bubble-them-text</code>, <code>--flora-messages-bubble-them-time</code>, <code>--flora-accent-green-overlay20</code>, <code>--flora-accent-tint14-on-surface-them</code>, <code>--flora-accent-tint18-on-surface-them</code>. Значение взято из <code>FLORA_THEME_TOKENS</code>.</p>
   <p class="note">Контраст указан по WCAG к основному фону. Это расчёт по sRGB, монитор на него не влияет — влияет только на то, различимы ли ступени глазами.</p>
 </section>
@@ -577,57 +594,62 @@
     <tbody><tr>
         <td>основной текст</td>
         <td><code>whiteTemplate</code> / <code>bg</code></td>
-        <td class="ratio">17.87:1</td>
+        <td class="ratio">15.20:1</td>
         <td><span class="badge pass">AAA</span></td>
       </tr><tr>
         <td>приглушённый текст</td>
         <td><code>gray</code> / <code>bg</code></td>
-        <td class="ratio">5.75:1</td>
-        <td><span class="badge pass">AA</span></td>
+        <td class="ratio">7.01:1</td>
+        <td><span class="badge pass">AAA</span></td>
       </tr><tr>
         <td>акцент, ссылки</td>
         <td><code>greenLight</code> / <code>bg</code></td>
-        <td class="ratio">15.47:1</td>
+        <td class="ratio">15.20:1</td>
         <td><span class="badge pass">AAA</span></td>
       </tr><tr>
-        <td>лайк / ошибка</td>
-        <td><code>like</code> / <code>bg</code></td>
-        <td class="ratio">4.74:1</td>
-        <td><span class="badge pass">AA</span></td>
+        <td>сигнал, лайк</td>
+        <td><code>signal</code> / <code>bg</code></td>
+        <td class="ratio">9.40:1</td>
+        <td><span class="badge pass">AAA</span></td>
+      </tr><tr>
+        <td>диагональ блокировки</td>
+        <td><code>signalSolid</code> / <code>bg</code></td>
+        <td class="ratio">4.75:1</td>
+        <td><span class="badge">не текст</span></td>
       </tr><tr>
         <td>свой пузырь</td>
         <td><code>textOnBubble</code> / <code>greenBubble</code></td>
-        <td class="ratio">5.49:1</td>
-        <td><span class="badge pass">AA</span></td>
+        <td class="ratio">4.45:1</td>
+        <td><span class="badge">только крупный</span></td>
       </tr><tr>
         <td>чужой пузырь</td>
         <td><code>messagesBubbleThemText</code> / <code>messagesBubbleThemBg</code></td>
-        <td class="ratio">10.81:1</td>
+        <td class="ratio">9.44:1</td>
         <td><span class="badge pass">AAA</span></td>
       </tr><tr>
         <td>время в пузыре</td>
         <td><code>messagesBubbleThemTime</code> / <code>messagesBubbleThemBg</code></td>
-        <td class="ratio">5.86:1</td>
+        <td class="ratio">6.43:1</td>
         <td><span class="badge pass">AA</span></td>
       </tr><tr>
         <td>текст на подложке</td>
         <td><code>whiteTemplate</code> / <code>reserveHoverSurface</code></td>
-        <td class="ratio">15.22:1</td>
+        <td class="ratio">13.21:1</td>
         <td><span class="badge pass">AAA</span></td>
       </tr><tr>
         <td>акцент на greenDark</td>
         <td><code>greenLight</code> / <code>greenDark</code></td>
-        <td class="ratio">11.74:1</td>
+        <td class="ratio">10.00:1</td>
         <td><span class="badge pass">AAA</span></td>
       </tr><tr>
         <td>иконки на подложке</td>
         <td><code>gray</code> / <code>reserveSubstrateTemplate</code></td>
-        <td class="ratio">4.89:1</td>
+        <td class="ratio">6.09:1</td>
         <td><span class="badge pass">AA</span></td>
       </tr><tr>
         <td>разделитель</td>
         <td><code>grayDivider</code> / <code>bg</code></td>
-        <td class="ratio">1.16:1</td>
+        <td class="ratio">1.19:1</td>
         <td><span class="badge">не текст</span></td>
       </tr></tbody>
   </table></div>
@@ -638,11 +660,11 @@
   <p class="lead">Реальные размеры Flora: 15 px / 300 с трекингом 0.45 px, 13 px для счётчиков. Проверяются читаемость, «звон» белого на чёрном и отсутствие масштабирования.</p>
   <div class="cols">
     <div class="textSample">
-      <div class="s15" style="color:#f6f3ee">Проверка строки набора: у глифов должны быть чистые края, без радужного ореола и без размытия.</div>
+      <div class="s15" style="color:#dde2e8">Проверка строки набора: у глифов должны быть чистые края, без радужного ореола и без размытия.</div>
       <div style="height:10px"></div>
-      <div class="s13" style="color:#8c8a87">Второстепенный текст 13 px — приглушённый, но различимый.</div>
+      <div class="s13" style="color:#979a9e">Второстепенный текст 13 px — приглушённый, но различимый.</div>
       <div style="height:12px"></div>
-      <div class="bubble">Пузырь собеседника: фон <code>#252321</code>, текст <code>#d9d6d2</code>.<time>12:48</time></div>
+      <div class="bubble">Пузырь собеседника: фон <code>#232324</code>, текст <code>#c5c9ce</code>.<time>12:48</time></div>
       <p class="note" style="margin-top:12px">Шрифт страницы — системный (Manrope в офлайне нет); для проверки читаемости этого достаточно, палитра от шрифта не зависит.</p>
     </div>
     <div class="card">

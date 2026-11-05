@@ -284,7 +284,8 @@ function renderPage(state) {
     fg: byKey.get("whiteTemplate").hex,
     muted: byKey.get("gray").hex,
     accent: byKey.get("greenLight").hex,
-    like: byKey.get("like").hex,
+    signal: byKey.get("signal").hex,
+    signalSolid: byKey.get("signalSolid").hex,
     surface: byKey.get("reserveSurfaceThem").hex,
     line: byKey.get("reservePopoverDivider").hex,
     bubbleBg: byKey.get("messagesBubbleThemBg").hex,
@@ -324,7 +325,8 @@ function renderPage(state) {
     --fg: ${ui.fg};
     --muted: ${ui.muted};
     --accent: ${ui.accent};
-    --like: ${ui.like};
+    --signal: ${ui.signal};
+    --signal-solid: ${ui.signalSolid};
     --surface: ${ui.surface};
     --line: ${ui.line};
     --bubble-bg: ${ui.bubbleBg};
@@ -350,7 +352,7 @@ function renderPage(state) {
   h3 { font-size: 15px; margin: 22px 0 8px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
   p { margin: 0 0 12px; }
   .lead { color: var(--muted); max-width: 78ch; }
-  .warn { color: var(--like); }
+  .warn { color: var(--signal); }
   .ok { color: var(--accent); }
   .pill {
     display: inline-block; padding: 2px 8px; border: 1px solid var(--line);
@@ -418,7 +420,7 @@ function renderPage(state) {
   td.ratio { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
   .badge { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .badge.pass { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
-  .badge.fail { color: var(--like); border-color: color-mix(in srgb, var(--like) 45%, var(--bg)); }
+  .badge.fail { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 45%, var(--bg)); }
   .textSample { background: var(--bg); padding: 16px; border: 1px solid var(--line); }
   .textSample .s15 { font-size: 15px; font-weight: 300; letter-spacing: .45px; line-height: 1.7; }
   .textSample .s13 { font-size: 13px; color: var(--muted); }
@@ -667,10 +669,11 @@ function renderNeutral(ui) {
       <div class="patch" data-fs="${ui.fg}" style="background:${ui.fg};height:90px" title="whiteTemplate"></div>
       <div class="patch" data-fs="${ui.bg}" style="background:${ui.bg};height:90px" title="bg"></div>
       <div class="patch" data-fs="${ui.accent}" style="background:${ui.accent};height:90px" title="accent"></div>
-      <div class="patch" data-fs="${ui.like}" style="background:${ui.like};height:90px" title="like"></div>
+      <div class="patch" data-fs="${ui.signal}" style="background:${ui.signal};height:90px" title="signal"></div>
+      <div class="patch" data-fs="${ui.signalSolid}" style="background:${ui.signalSolid};height:90px" title="signal-solid"></div>
     </div>
     <div style="height:10px"></div>
-    <p class="note"><strong>Норма:</strong> клин нейтральный от теней до светов, белый — белый, без розового/зелёного/синего ухода. Ниже — нейтральный эталон 50 % и фактические бренд-заливки <code>whiteTemplate</code>, <code>bg</code>, <code>accent</code>, <code>like</code>.
+    <p class="note"><strong>Норма:</strong> клин нейтральный от теней до светов, белый — белый, без розового/зелёного/синего ухода. Ниже — нейтральный эталон 50 % и фактические бренд-заливки <code>whiteTemplate</code>, <code>bg</code>, <code>accent</code>, <code>signal</code>, <code>signal-solid</code>.
     <br><strong>Серый уходит в зелень или маджету:</strong> смените пресет 6500 K / sRGB, не «лечите» RGB-слайдерами. <strong>Белый кажется тёплым:</strong> проверьте, что Night Light и LowBlue выключены, затем верните пресет цвета.</p>
   </div>
 </section>`;
@@ -780,7 +783,8 @@ function renderContrast(tokens) {
     ["whiteTemplate", "bg", "основной текст", "text"],
     ["gray", "bg", "приглушённый текст", "text"],
     ["greenLight", "bg", "акцент, ссылки", "text"],
-    ["like", "bg", "лайк / ошибка", "text"],
+    ["signal", "bg", "сигнал, лайк", "text"],
+    ["signalSolid", "bg", "диагональ блокировки", "line"],
     ["textOnBubble", "greenBubble", "свой пузырь", "text"],
     ["messagesBubbleThemText", "messagesBubbleThemBg", "чужой пузырь", "text"],
     [

@@ -348,8 +348,8 @@
 }
 
 .notificationIconLike {
-  background: color-mix(in srgb, var(--flora-like) 15%, transparent);
-  color: var(--flora-like);
+  background: color-mix(in srgb, var(--flora-signal) 15%, transparent);
+  color: var(--flora-signal);
 }
 
 .notificationIconReply {

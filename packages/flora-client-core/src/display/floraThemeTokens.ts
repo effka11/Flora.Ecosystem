@@ -12,8 +12,9 @@ export const FLORA_THEME_TOKENS = {
   textSecondary: "#b3b7bc",
   greenLight: "#dde2e8",
   greenDark: "#303132",
-  like: "#e8382c",
-  /** Ошибки, деструктивные действия, бейджи. */
+  /** Заливочный сигнал: диагональ блокировки, точка статуса; не текст. */
+  signalSolid: "#e8382c",
+  /** Ошибки, деструктивные действия, бейджи, лайки. */
   signal: "#ff9688",
 
   accentFillSubtle: "#171717",

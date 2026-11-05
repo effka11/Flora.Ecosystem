@@ -635,7 +635,7 @@
 }
 
 .actionBtnLikeOn {
-  color: color-mix(in srgb, var(--flora-like) 92%, var(--flora-gray) 8%);
+  color: color-mix(in srgb, var(--flora-signal) 92%, var(--flora-gray) 8%);
 }
 
 .actionBtn svg {

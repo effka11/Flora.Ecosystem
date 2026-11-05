@@ -20,7 +20,7 @@ const FLORA_COLOR_ALIASES = {
   textMuted: "gray",
   accent: "greenLight",
   accentDark: "greenDark",
-  like: "like",
+  signalSolid: "signalSolid",
   signal: "signal",
   border: "grayDivider",
   error: "signal",

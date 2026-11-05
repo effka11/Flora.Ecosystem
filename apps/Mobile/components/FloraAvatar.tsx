@@ -63,7 +63,7 @@ function BlockedAccountDiagonal({ size }: { size: number }) {
           position: "absolute",
           width: length,
           height: stroke,
-          backgroundColor: floraColors.like,
+          backgroundColor: floraColors.signalSolid,
           top: (size - stroke) / 2,
           left: (size - length) / 2,
           transform: [{ rotate: "45deg" }],

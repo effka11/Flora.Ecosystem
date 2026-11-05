@@ -165,7 +165,7 @@ export const PostCard = memo(function PostCard({
                 >
                   <FeedPostHeartIcon
                     size={floraFeedPost.actionIconSize}
-                    color={engagement.liked ? floraColors.like : floraColors.gray}
+                    color={engagement.liked ? floraColors.signal : floraColors.gray}
                     filled={engagement.liked}
                   />
                   <Text style={styles.actionText} numberOfLines={1}>
