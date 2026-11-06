@@ -181,6 +181,9 @@ pub enum ModelKind {
     /// Refinement delta-Q дочернего узла 16×16 (v11): символ = δ + 2,
     /// δ ∈ −2..+2 относительно ступени корня; 2 — нейтраль.
     DqRefine,
+    /// Индекс частотной формы корня 32×32 (v14): 0 — плоская матрица
+    /// (семантика v13), 1..=3 — нарастающий tilt AC-ступеней.
+    FreqShape,
     /// DC hybrid-uint.
     Dc,
     /// Run + EOB (sym 31).
@@ -194,7 +197,7 @@ impl ModelKind {
         match self {
             Self::Split | Self::Eob => 2,
             Self::Mode => 15,
-            Self::Tx | Self::Cdef => 4,
+            Self::Tx | Self::Cdef | Self::FreqShape => 4,
             Self::Dq => 8,
             Self::DqRefine => 5,
             // Максимальный run в 32×32 равен 1022: hybrid-uint token = 21.
@@ -267,6 +270,11 @@ fn prior(kind: ModelKind) -> ([u16; 32], u8, u32) {
             // δ = 0 доминирует: большинство детей наследуют ступень корня,
             // refinement включается только на гетерогенных корнях.
             freq[..n].copy_from_slice(&[1, 3, 16, 3, 1]);
+        }
+        ModelKind::FreqShape => {
+            // Плоская форма (0) доминирует: tilt включается только на
+            // выраженной текстуре (§7.22).
+            freq[..n].copy_from_slice(&[16, 8, 5, 3]);
         }
         ModelKind::Dc => {
             // DC: малые значения чаще, без отдельного EOB.

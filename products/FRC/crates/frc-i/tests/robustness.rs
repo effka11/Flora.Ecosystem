@@ -6,7 +6,8 @@
 
 use frc_i::{DecodeError, DecodeLimits, decode, decode_with_limits};
 use frc_i::{
-    EncodeMode, ImageView, PixelFormat, encode, encode_with_icc, encode_with_version, read_icc,
+    EncodeMode, ImageView, PixelFormat, encode, encode_with_icc, encode_with_version,
+    encode_with_version_ts, read_icc,
 };
 
 fn xorshift(seed: &mut u64) -> u64 {
@@ -64,6 +65,8 @@ fn sample_streams() -> Vec<Vec<u8>> {
         encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 8).unwrap(), // v8 (YCoCg)
         encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 7).unwrap(), // v7 (адаптивный)
         encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 5).unwrap(), // v5 (rANS)
+        encode_with_version(&g, EncodeMode::Lossy { quality: 60 }, 14).unwrap(), // v14 (TS, кандидат)
+        encode_with_version_ts(&g, EncodeMode::Lossy { quality: 60 }, 14, &[3]).unwrap(), // v14 активный tilt
     ]
 }
 
@@ -83,7 +86,7 @@ fn random_garbage_never_panics() {
 #[test]
 fn garbage_with_valid_magic_never_panics() {
     let mut seed = 0xBADF00Du64;
-    for version in [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10] {
+    for version in [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] {
         for _ in 0..500 {
             let len = 20 + (xorshift(&mut seed) % 400) as usize;
             let mut bytes: Vec<u8> = (0..len)

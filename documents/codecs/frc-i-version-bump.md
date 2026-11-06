@@ -43,6 +43,14 @@
 MIME `image/x-flora-frc-i` **не** несёт номер wire (`acceptsFrcI` смотрит только тип до `;`).
 Совместимость — magic + byte версии в файле + gate `FrcICodec.load`.
 
+**Кандидат линии без публичного encode.** `VERSION_MAX` и TS-gate могут
+опережать публичный кодер: декодер читает новую версию всегда, TS-gate
+`FRC_I_BITSTREAM_VERSION` следует за `VERSION_MAX`, а публичный `encode()`
+остаётся на предыдущей, пока линия не заморожена. В этом состоянии спека
+называет публичный frozen в версии Status, а `golden-vN-*` кандидата
+фиксируется явным `encode_with_version(..., N)`. С линии v14 публичный
+lossy-кодер пишет v14.
+
 ### Goldens (кратко из §10)
 
 | Класс | Примеры | При bump `vN` |
@@ -60,7 +68,7 @@ MIME `image/x-flora-frc-i` **не** несёт номер wire (`acceptsFrcI` с
 Иначе после `predev` новый wasm + старый TS → пустые фото.
 
 1. **Спека** — tool в `frc-i.md`, `VERSION_MAX = N`, decoder `v1..vN`, Status.
-2. **Rust** — encode/decode; публичный lossy `encode()` пишет `N`; старые — `encode_with_version` / CLI `--bitstream`.
+2. **Rust** — encode/decode; публичный lossy `encode()` пишет `N` (или остаётся на предыдущей версии, если `N` — decoder-only кандидат, см. ниже); старые — `encode_with_version` / CLI `--bitstream`.
 3. **Goldens** — `golden-vN-*.fri` по §10; `cargo test -p frc-i --test golden`.
 4. **TS** — `FRC_I_BITSTREAM_VERSION = N` + тест `toBe(N)` **в том же коммите**, что Rust `BITSTREAM_VERSION = N`.
 5. **WASM** — пересобрать локально (не коммитить):  

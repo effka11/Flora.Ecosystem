@@ -1,21 +1,20 @@
 //! # FRC-I — Flora Reproducible Codec — Image
 //!
 //! Нативный фото-кодек экосистемы Flora (семейство FRC, `documents/codecs/codecs.md`).
-//! Нормативная спецификация битстрима — `documents/codecs/frc-i.md`. Кодер пишет
-//! v3 для lossless и v13 для lossy (v1..v13 заморожены и декодируются всегда);
-//! совместимость фиксируют golden-вектора в `tests/data/`.
+//! Нормативная спецификация битстрима — `documents/codecs/frc-i.md`. Публичный
+//! кодер пишет v3 для lossless и v14 для lossy; декодер читает v1..v14.
+//! Совместимость фиксируют golden-вектора в `tests/data/`.
 //!
 //! Два режима в одном контейнере:
 //! - **lossless** — обратимый YCoCg-R (либо identity-RGB, либо палитра до
 //!   256 цветов — кодер выбирает лучшее), MED-предиктор, контексты по
 //!   градиентам, raw-fallback как потолок худшего случая;
-//! - **lossy v13** — целочисленный YCoCg с пошаговым квантованием плоскостей
+//! - **lossy v14** — целочисленный YCoCg с пошаговым квантованием плоскостей
 //!   (Y/Co/Cg = 51/45/38), опциональный 4:2:0, per-root и per-child 16×16
-//!   иерархическая delta-Q (адаптивная квантизация с асимметричными силами
-//!   уточнения/огрубления и refinement, frc-i.md §11.5–11.7), перцептивный
-//!   RD кодера (λ решений, dead-zone; §11.10) и rate-aware докалибровка
-//!   оставшихся констант PSNR-эпохи (split 8→4, поиск transform; §11.11);
-//!   wire идентичен v9–v12, дерево блоков, intra, DCT/ADST и энтропия — v7/v8.
+//!   иерархическая delta-Q, перцептивный RD и rate-aware докалибровка v13
+//!   плюс сигналируемый индекс частотной формы `ts` (tilt AC-ступеней,
+//!   §7.22). Референсный кодер принимает одно `ts` на кадр. Wire v7–v14,
+//!   дерево блоков, intra, DCT/ADST и энтропия — v7/v8.
 //!
 //! Lossless использует rANS, lossy v7/v8 — адаптивный range coder; оба слоя
 //! используют hybrid-uint токены. Изображение делится на независимые тайлы
@@ -54,6 +53,10 @@ mod predict;
 mod rans;
 mod section;
 mod tokens;
+mod tuning;
+
+#[cfg(feature = "tuning-env")]
+pub use tuning::tuning_env_registry;
 
 pub use error::{DecodeError, EncodeError};
 
@@ -129,7 +132,7 @@ impl Default for DecodeLimits {
 /// Метаданные потока без декодирования тела.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageInfo {
-    /// Версия битстрима (`VERSION_MIN..=VERSION_MAX`, сейчас 1..=13).
+    /// Версия битстрима (`VERSION_MIN..=VERSION_MAX`, сейчас 1..=14).
     pub version: u8,
     pub width: u32,
     pub height: u32,
@@ -148,12 +151,12 @@ pub struct ImageInfo {
     pub quality: Option<u8>,
 }
 
-/// Кодирует изображение в FRC-I (v13 для lossy, v3 для lossless).
+/// Кодирует изображение в FRC-I (публичный lossy v14, lossless v3).
 pub fn encode(img: &ImageView<'_>, mode: EncodeMode) -> Result<Vec<u8>, EncodeError> {
     encode::encode(img, mode)
 }
 
-/// Кодирует с вложением ICC-профиля (v13 для lossy, v6 для lossless).
+/// Кодирует с вложением ICC-профиля (публичный lossy v14, lossless v6).
 /// Профиль возвращается декодером в `DecodedImage::icc` и читается без
 /// декодирования пикселей через [`read_icc`].
 pub fn encode_with_icc(
@@ -171,6 +174,18 @@ pub fn encode_with_version(
     version: u8,
 ) -> Result<Vec<u8>, EncodeError> {
     encode::encode_with_version(img, mode, version)
+}
+
+/// Тестовый хук: v14 с принудительным паттерном `ts` по корням luma
+/// (циклично; пустой — все нули). См. `encode::encode_with_version_ts`.
+#[doc(hidden)]
+pub fn encode_with_version_ts(
+    img: &ImageView<'_>,
+    mode: EncodeMode,
+    version: u8,
+    ts_pattern: &[u8],
+) -> Result<Vec<u8>, EncodeError> {
+    encode::encode_with_version_ts(img, mode, version, ts_pattern)
 }
 
 #[doc(hidden)]

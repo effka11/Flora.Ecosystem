@@ -20,3 +20,6 @@ default = ["threads"]
 # бит-в-бит не зависит от числа потоков. Для wasm32 без атомиков собирать
 # с --no-default-features.
 threads = []
+# Слой A/B-ручек линии v14 (frc-i-v14-plan.md §6.1): env читается только
+# с этой feature; production-сборки её не включают. См. src/tuning.rs.
+tuning-env = []

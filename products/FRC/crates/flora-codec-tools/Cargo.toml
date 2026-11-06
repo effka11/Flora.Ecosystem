@@ -19,3 +19,7 @@ frc-i = { workspace = true }
 clap = { workspace = true }
 # PNG/JPEG — только как эталоны сравнения в бенчмарках и IO обменных форматов.
 image = { workspace = true }
+
+[features]
+# Проброс слоя A/B-ручек FRC-I v14: CLI сверяет env с реестром.
+tuning-env = ["frc-i/tuning-env"]

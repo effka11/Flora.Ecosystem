@@ -1379,6 +1379,295 @@ fn dq_lambdas(mats: &[DqMats], tuning: RdTuning) -> Vec<RdLambda> {
         .collect()
 }
 
+// --- v14: индекс частотной формы корня (tilt AC-ступеней) -----------------------
+
+/// Нормативная таблица `TS_NUM[ts][zone]` (Q6), зоны [LOW, MID, HIGH]
+/// (frc-i.md §7.22). `ts = 0` — плоская матрица, семантика v13.
+const TS_NUM: [[u16; 3]; 4] = [[64, 64, 64], [72, 76, 80], [80, 88, 96], [88, 100, 112]];
+
+/// Зона позиции 8×8-матрицы по `s = u + v`: LOW (1..=2), MID (3..=5),
+/// HIGH (6+). DC (s = 0) не масштабируется и в зоны не входит.
+#[inline]
+fn ts_zone(index: usize) -> usize {
+    let s = index / 8 + index % 8;
+    match s {
+        0..=2 => 0,
+        3..=5 => 1,
+        _ => 2,
+    }
+}
+
+/// Нормативное масштабирование матрицы 8×8 индексом `ts` (Q6):
+/// `q''[i] = clamp((q'[i]·TS_NUM[ts][zone] + 32) >> 6, 1, 255)`, DC неизменен.
+fn ts_tilt_qmat(qmat: &[u16; 64], ts: u8) -> [u16; 64] {
+    let ts = usize::from(ts.min(3));
+    if ts == 0 {
+        return *qmat;
+    }
+    let table = ts_num_table();
+    core::array::from_fn(|i| {
+        if i == 0 {
+            qmat[0]
+        } else {
+            let num = u32::from(table[ts][ts_zone(i)]);
+            ((u32::from(qmat[i]) * num + 32) >> 6).clamp(1, 255) as u16
+        }
+    })
+}
+
+/// Таблица `TS_NUM`, переопределяемая env-ручкой `FRC_I_TS_TABLE` под
+/// feature `tuning-env` одинаково на encode и decode (до freeze).
+#[cfg(feature = "tuning-env")]
+fn ts_num_table() -> [[u16; 3]; 4] {
+    static TABLE: std::sync::OnceLock<[[u16; 3]; 4]> = std::sync::OnceLock::new();
+    *TABLE.get_or_init(|| {
+        std::env::var("FRC_I_TS_TABLE")
+            .ok()
+            .and_then(|raw| parse_ts_table(&raw))
+            .unwrap_or(TS_NUM)
+    })
+}
+
+#[cfg(not(feature = "tuning-env"))]
+fn ts_num_table() -> [[u16; 3]; 4] {
+    TS_NUM
+}
+
+/// Парсер `"72,76,80;80,88,96;88,100,112"` (три строки ts=1..=3).
+#[cfg(feature = "tuning-env")]
+fn parse_ts_table(raw: &str) -> Option<[[u16; 3]; 4]> {
+    // Строки — `;` или `|`, значения — `,` или `:` (стороны полигона
+    // разделяют ручки запятой, поэтому допустима форма `72:76:80|…`).
+    let mut table = TS_NUM;
+    let rows: Vec<&str> = raw.split([';', '|']).collect();
+    if rows.len() != 3 {
+        return None;
+    }
+    for (row, text) in rows.iter().enumerate() {
+        let values: Vec<u16> = text
+            .split([',', ':'])
+            .map(|v| v.trim().parse::<u16>().ok())
+            .collect::<Option<_>>()?;
+        if values.len() != 3 || values.contains(&0) {
+            return None;
+        }
+        table[row + 1].copy_from_slice(&values);
+    }
+    Some(table)
+}
+
+/// Нормативные матрицы пары `(dq, ts)`.
+struct DqTsMats {
+    qmat: [u16; 64],
+    qmat4: [u16; 16],
+    qmat16: [u16; 256],
+    qmat32: Box<[u16; 1024]>,
+}
+
+/// Ленивый кэш матриц `(dq, ts)`: строится только встреченная пара, чтобы
+/// decode не платил за 32 набора (frc-i-v14-plan.md §3.4).
+struct DqTsCache {
+    qmat: [u16; 64],
+    slots: Vec<Option<DqTsMats>>,
+}
+
+impl DqTsCache {
+    fn new(qmat: &[u16; 64]) -> Self {
+        Self {
+            qmat: *qmat,
+            slots: (0..32).map(|_| None).collect(),
+        }
+    }
+
+    fn mats(&mut self, dq: u8, ts: u8) -> &DqTsMats {
+        let idx = usize::from(dq) * 4 + usize::from(ts.min(3));
+        if self.slots[idx].is_none() {
+            let base = dq_scale_qmat(&self.qmat, dq);
+            let q8 = ts_tilt_qmat(&base, ts);
+            self.slots[idx] = Some(DqTsMats {
+                qmat4: quant_matrix4(&q8),
+                qmat16: quant_matrix16(&q8),
+                qmat32: Box::new(quant_matrix32(&q8)),
+                qmat: q8,
+            });
+        }
+        self.slots[idx].as_ref().expect("матрицы построены выше")
+    }
+}
+
+/// Лагранжиан пары `(dq, ts)` с кэшем: `λ` считается от mean(Q'') наклонённой
+/// матрицы (отдельной константы у tilt нет).
+fn dq_ts_lambda(
+    cache: &mut DqTsCache,
+    lambdas: &mut [Option<RdLambda>],
+    dq: u8,
+    ts: u8,
+    tuning: RdTuning,
+) -> RdLambda {
+    let idx = usize::from(dq) * 4 + usize::from(ts.min(3));
+    if lambdas[idx].is_none() {
+        let m = cache.mats(dq, ts);
+        lambdas[idx] = Some(RdLambda::for_plane(&m.qmat, tuning));
+    }
+    lambdas[idx].expect("λ построен выше")
+}
+
+/// Кодерная эвристика частотной формы (frc-i-v14-plan.md §4.1): индекс
+/// по лог-активности корня, пороги качества/ступени и потолок — ручки.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn choose_ts_indices(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    dqs: &[u8],
+    qmat: &[u16; 64],
+    dq_tuning: DqTuning,
+    tuning: TsTuning,
+    quality: u8,
+) -> Vec<u8> {
+    let root_cols = w.div_ceil(32);
+    let root_rows = h.div_ceil(32);
+    let n = root_cols * root_rows;
+    if !tuning.enable || quality > tuning.qmax || quality < tuning.qmin {
+        return vec![0; n];
+    }
+    let max = tuning.max.min(3);
+    // Режимы 7/8: одно решение на кадр. Смешение ts внутри кадра даёт
+    // BA-хотспоты на границах корней (§11.8); гладкие кадры (небо, кожа)
+    // при этом ещё и тянут mean S2 вверх.
+    if matches!(tuning.mode, 7..=11) {
+        let mut sum_l = 0f32;
+        let mut n_hot = 0usize;
+        let mut logs = Vec::with_capacity(n);
+        for ry in 0..root_rows {
+            for rx in 0..root_cols {
+                let block = gather_block32_i32(buf, w, h, rx, ry);
+                let l = (1.0 + dq_activity32(&block, dq_tuning)).log2();
+                logs.push(l);
+                sum_l += l;
+                if l >= tuning.l0 {
+                    n_hot += 1;
+                }
+            }
+        }
+        let mean = if n == 0 { 0.0 } else { sum_l / n as f32 };
+        let frac = if n == 0 { 0.0 } else { n_hot as f32 / n as f32 };
+        logs.sort_by(|a, b| a.total_cmp(b));
+        let p25 = if n == 0 { 0.0 } else { logs[(n - 1) / 4] };
+        let tilt = match tuning.mode {
+            7 => mean >= tuning.g0,
+            8 => frac >= tuning.gf,
+            9 => frac >= tuning.gf && p25 >= tuning.gp,
+            10 => frac >= tuning.gf && mean >= tuning.g0,
+            _ => {
+                if frac < tuning.gf {
+                    false
+                } else {
+                    let tilted = ts_tilt_qmat(qmat, max.max(1));
+                    let (sse0, sse1) = ac_sse_probe(buf, w, h, qmat, &tilted);
+                    sse0 > 0.0 && sse1 <= sse0 * (1.0 + tuning.tau)
+                }
+            }
+        };
+        return vec![if tilt { max } else { 0 }; n];
+    }
+    let mut out = Vec::with_capacity(n);
+    for ry in 0..root_rows {
+        for rx in 0..root_cols {
+            let dq = dqs[ry * root_cols + rx];
+            if dq < tuning.dqmin || dq > tuning.dqmax {
+                out.push(0);
+                continue;
+            }
+            let block = gather_block32_i32(buf, w, h, rx, ry);
+            let value = if tuning.mode == 2 {
+                // Диагностика: шахматный порядок корней (смешение без сигнала).
+                ((rx + ry) & 1) as i32 * i32::from(max)
+            } else if tuning.mode == 3 {
+                // Диагностика: левая половина корней — tilt, правая — нет.
+                i32::from(rx * 2 < root_cols) * i32::from(max)
+            } else if tuning.mode == 4 {
+                i32::from(tuning.dqmap[usize::from(dq.min(7))])
+            } else if tuning.mode == 5 {
+                // Расписание по качеству: `q ≤ q2 → max`, `q2 < q ≤ q1 → 1`.
+                if quality <= tuning.q2 {
+                    i32::from(max)
+                } else if quality <= tuning.q1 {
+                    1
+                } else {
+                    0
+                }
+            } else if tuning.mode == 6 {
+                // Расписание по качеству с мягкой нижней полосой:
+                // `q < q2 → 1`, `q2 ≤ q ≤ qmax → max`.
+                if quality < tuning.q2 {
+                    1
+                } else {
+                    i32::from(max)
+                }
+            } else if tuning.mode == 1 {
+                let (density, precision) = hf_regime32(&block, &dq_scale_qmat(qmat, dq));
+                if density < tuning.d0 {
+                    i32::from(tuning.dead)
+                } else if precision < tuning.p1 {
+                    0
+                } else if precision < tuning.p2 {
+                    1
+                } else if precision < tuning.p3 {
+                    2
+                } else {
+                    3
+                }
+            } else {
+                let activity = dq_activity32(&block, dq_tuning);
+                let l = (1.0 + activity).log2();
+                ((l - tuning.l0) * tuning.slope).floor() as i32
+            };
+            out.push(value.clamp(0, i32::from(max)) as u8);
+        }
+    }
+    out
+}
+
+/// Режим коэффициентов (эвристика v14, mode 1): по 16 DCT 8×8 источника
+/// корня считаются плотность ненулевых HF-коэффициентов (зоны MID/HIGH,
+/// `s = u + v ≥ 3`, порог — мёртвая зона `0.68` ступени) и их средняя
+/// величина в ступенях шага корня. Малая величина — текстура «на грани
+/// существования» (tilt её стирает), большая — tilt теряет только точность.
+fn hf_regime32(block: &[i32; 1024], qmat: &[u16; 64]) -> (f32, f32) {
+    const DEAD_ZONE: f32 = 0.68;
+    let mut spatial = [0f32; 64];
+    let mut freq = [0f32; 64];
+    let mut total = 0usize;
+    let mut nonzero = 0usize;
+    let mut sum_steps = 0f32;
+    for by in 0..4 {
+        for bx in 0..4 {
+            for y in 0..8 {
+                for x in 0..8 {
+                    spatial[y * 8 + x] = block[(by * 8 + y) * 32 + bx * 8 + x] as f32;
+                }
+            }
+            crate::dct::fdct8x8(&spatial, &mut freq);
+            for (i, &c) in freq.iter().enumerate() {
+                if i / 8 + i % 8 < 3 {
+                    continue;
+                }
+                total += 1;
+                let r = c.abs() / f32::from(qmat[i]);
+                if r >= DEAD_ZONE {
+                    nonzero += 1;
+                    sum_steps += r;
+                }
+            }
+        }
+    }
+    if nonzero == 0 {
+        return (0.0, 0.0);
+    }
+    (nonzero as f32 / total as f32, sum_steps / nonzero as f32)
+}
+
 /// MAD 2×2-даунскейла корня 32×32: структурная составляющая активности.
 /// Шум с нулевым средним гасится усреднением 2×2, градиенты и края —
 /// нет; разность MAD − k·MAD_coarse выделяет маскирующую текстуру.
@@ -1394,6 +1683,45 @@ fn coarse_activity32(block: &[i32; 1024]) -> f32 {
     let mean = down.iter().sum::<i32>() / 256;
     let mad: i32 = down.iter().map(|&v| (v - mean).abs()).sum();
     mad as f32 / 256.0
+}
+
+/// Проба SSE AC по одному блоку 8×8 в центре каждого корня: сравнивает
+/// квантование плоской матрицы и наклонённой. На гладкой коже/небе
+/// наклон сильно растит ошибку; на текстуре обе матрицы режут HF похоже.
+fn ac_sse_probe(buf: &[i16], w: usize, h: usize, q0: &[u16; 64], q1: &[u16; 64]) -> (f32, f32) {
+    if w < 8 || h < 8 {
+        return (1.0, 1.0);
+    }
+    let root_cols = w.div_ceil(32);
+    let root_rows = h.div_ceil(32);
+    let mut spatial = [0f32; 64];
+    let mut freq = [0f32; 64];
+    let mut sse0 = 0f32;
+    let mut sse1 = 0f32;
+    for ry in 0..root_rows {
+        for rx in 0..root_cols {
+            let x0 = (rx * 32 + 8).min(w.saturating_sub(8));
+            let y0 = (ry * 32 + 8).min(h.saturating_sub(8));
+            for y in 0..8 {
+                for x in 0..8 {
+                    spatial[y * 8 + x] = buf[(y0 + y) * w + (x0 + x)] as f32;
+                }
+            }
+            crate::dct::fdct8x8(&spatial, &mut freq);
+            for i in 1..64 {
+                let c = freq[i];
+                let s0 = f32::from(q0[i]);
+                let s1 = f32::from(q1[i]);
+                let q0c = (c / s0).round() * s0;
+                let q1c = (c / s1).round() * s1;
+                let d0 = c - q0c;
+                let d1 = c - q1c;
+                sse0 += d0 * d0;
+                sse1 += d1 * d1;
+            }
+        }
+    }
+    (sse0, sse1)
 }
 
 /// Активность корня для AQ: MAD 32×32 либо минимум MAD четырёх
@@ -2232,6 +2560,336 @@ pub(super) fn encode_tile_plane_v11(
     recon
 }
 
+/// Кодирует один корень 32×32 линии v14: `dq → ts → split`, дерево — как
+/// v11, но все матрицы корня и детей наклонены `ts` корня.
+#[allow(clippy::too_many_arguments)]
+fn encode_root_v14(
+    buf: &[i16],
+    recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    rx: usize,
+    ry: usize,
+    cache: &mut DqTsCache,
+    lambdas: &mut [Option<RdLambda>],
+    rd_tuning: RdTuning,
+    root_dq: u8,
+    root_ts: u8,
+    lambda_tilt: bool,
+    ideal16: &[u8],
+    sb_cols: usize,
+    refine: RefineLimits,
+    st: &mut CtxV7,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) {
+    // Базис λ: наклонённая матрица (как у ступеней DQ) или матрица ступени.
+    let lambda_ts = if lambda_tilt { root_ts } else { 0 };
+    let root_rd = dq_ts_lambda(cache, lambdas, root_dq, lambda_ts, rd_tuning);
+    let lambda = root_rd.decision;
+    let hi = refine.max_up.clamp(0, DQR_RADIUS);
+    let lo = -refine.max_down.clamp(0, DQR_RADIUS);
+    let child_sym = |sbx: usize, sby: usize| -> u8 {
+        if ideal16.is_empty() {
+            return DQR_NEUTRAL;
+        }
+        let ideal = i32::from(ideal16[sby * sb_cols + sbx]);
+        let mut delta = ideal - i32::from(root_dq);
+        if delta.abs() < refine.deadzone {
+            delta = 0;
+        }
+        (delta.clamp(lo, hi) + DQR_RADIUS) as u8
+    };
+    macro_rules! emit_children {
+        () => {
+            for (sbx, sby) in child_nodes16(rx, ry, w, h) {
+                let sym = child_sym(sbx, sby);
+                let level = dqr_effective(root_dq, sym) as u8;
+                let rd = dq_ts_lambda(cache, lambdas, level, lambda_ts, rd_tuning);
+                let m = cache.mats(level, root_ts);
+                syms.push((CTX11_DQR, sym));
+                let (node, _) = eval_node16(
+                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, rd,
+                );
+                emit_node16(&node, st, syms, raw);
+            }
+        };
+    }
+
+    let partial = (rx + 1) * 32 > w || (ry + 1) * 32 > h;
+    if partial {
+        syms.push((CTX7_SPLIT32, SPLIT_QUAD));
+        emit_children!();
+        return;
+    }
+
+    let orig32 = gather_block32_i32(buf, w, h, rx, ry);
+    let hint = split_hint32(&orig32);
+    if hint == Some(SPLIT_QUAD) {
+        syms.push((CTX7_SPLIT32, SPLIT_QUAD));
+        emit_children!();
+        return;
+    }
+
+    let b32 = border32(recon, w, h, rx, ry);
+    let cfl_block = cfl_luma.map(|luma| gather_block32_i32(luma, w, h, rx, ry));
+    let (mode32, pred32, quant32, cost32) = {
+        let m = cache.mats(root_dq, root_ts);
+        choose_mode32(
+            &orig32,
+            &b32,
+            cfl_block.as_ref(),
+            &m.qmat32,
+            lambda,
+            root_rd.ac_bias,
+            usize::from(root_rd.candidates[2]),
+        )
+    };
+    let (tx32, quant32, cost32) = {
+        let m = cache.mats(root_dq, root_ts);
+        choose_transform(
+            &orig32,
+            pred32.as_ref(),
+            &m.qmat32,
+            root_rd,
+            *quant32,
+            cost32,
+            forward_tx32,
+            tx_scan32,
+            squared_quant_error,
+        )
+    };
+
+    if hint == Some(SPLIT_WHOLE) {
+        {
+            let m = cache.mats(root_dq, root_ts);
+            reconstruct32(recon, w, h, rx, ry, &quant32, &m.qmat32, tx32, &pred32);
+        }
+        syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
+        syms.push((CTX7_MODE, mode32));
+        syms.push((CTX7_TX, tx32));
+        encode_coeffs32_v7(&quant32, tx32, st, syms, raw);
+        return;
+    }
+
+    let whole_cost = cost32 + lambda * (MODE_COST_BITS + TX_COST_BITS) as f32;
+    let backup = save_region32(recon, w, h, rx, ry);
+    let mut nodes: Vec<Node16> = Vec::with_capacity(4);
+    let mut split_cost = 0f32;
+    let mut split_complete = true;
+    for (sbx, sby) in child_nodes16(rx, ry, w, h) {
+        let (node, cost) = {
+            let m = cache.mats(root_dq, root_ts);
+            eval_node16(
+                buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, root_rd,
+            )
+        };
+        nodes.push(node);
+        split_cost += cost;
+        if split_cost > whole_cost {
+            split_complete = false;
+            break;
+        }
+    }
+    if split_complete && split_cost < whole_cost {
+        syms.push((CTX7_SPLIT32, SPLIT_QUAD));
+        let child_syms: Vec<(usize, usize, u8)> = child_nodes16(rx, ry, w, h)
+            .map(|(sbx, sby)| (sbx, sby, child_sym(sbx, sby)))
+            .collect();
+        if child_syms.iter().all(|&(.., sym)| sym == DQR_NEUTRAL) {
+            for (&(.., sym), node) in child_syms.iter().zip(&nodes) {
+                syms.push((CTX11_DQR, sym));
+                emit_node16(node, st, syms, raw);
+            }
+        } else {
+            restore_region32(recon, w, h, rx, ry, &backup);
+            for (sbx, sby, sym) in child_syms {
+                let level = dqr_effective(root_dq, sym) as u8;
+                let rd = dq_ts_lambda(cache, lambdas, level, lambda_ts, rd_tuning);
+                let m = cache.mats(level, root_ts);
+                syms.push((CTX11_DQR, sym));
+                let (node, _) = eval_node16(
+                    buf, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16, rd,
+                );
+                emit_node16(&node, st, syms, raw);
+            }
+        }
+    } else {
+        restore_region32(recon, w, h, rx, ry, &backup);
+        {
+            let m = cache.mats(root_dq, root_ts);
+            reconstruct32(recon, w, h, rx, ry, &quant32, &m.qmat32, tx32, &pred32);
+        }
+        syms.push((CTX7_SPLIT32, SPLIT_WHOLE));
+        syms.push((CTX7_MODE, mode32));
+        syms.push((CTX7_TX, tx32));
+        encode_coeffs32_v7(&quant32, tx32, st, syms, raw);
+    }
+}
+
+/// Кодирует тайл-плоскость v14: `dq`, `ts` перед деревом каждого корня.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn encode_tile_plane_v14(
+    buf: &[i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    tuning: DqTuning,
+    ts_tuning: TsTuning,
+    quality: u8,
+    forced_ts: Option<&[u8]>,
+    rd_tuning: RdTuning,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) -> Vec<i16> {
+    debug_assert_eq!(buf.len(), w * h);
+    debug_assert!(cfl_luma.is_none_or(|luma| luma.len() == w * h));
+    let root_cols = w.div_ceil(32);
+    let root_rows = h.div_ceil(32);
+    let sb_cols = w.div_ceil(16);
+    let mut cache = DqTsCache::new(qmat);
+    let mut lambdas: Vec<Option<RdLambda>> = vec![None; 32];
+    let dqs = choose_dq_indices(buf, w, h, tuning);
+    let tss = match forced_ts {
+        Some(pattern) if !pattern.is_empty() => (0..dqs.len())
+            .map(|i| pattern[i % pattern.len()].min(3))
+            .collect(),
+        _ => choose_ts_indices(buf, w, h, &dqs, qmat, tuning, ts_tuning, quality),
+    };
+    let ideal16 = choose_dq_ideal16(buf, w, h, tuning);
+    let mut recon = vec![0i16; w * h];
+    let mut st = CtxV7::default();
+
+    for ry in 0..root_rows {
+        for rx in 0..root_cols {
+            let idx = ry * root_cols + rx;
+            let dq = dqs[idx];
+            let ts = tss[idx];
+            syms.push((CTX9_DQ, dq));
+            syms.push((CTX14_TS, ts));
+            encode_root_v14(
+                buf,
+                &mut recon,
+                cfl_luma,
+                w,
+                h,
+                rx,
+                ry,
+                &mut cache,
+                &mut lambdas,
+                rd_tuning,
+                dq,
+                ts,
+                ts_tuning.lambda_tilt,
+                &ideal16,
+                sb_cols,
+                RefineLimits {
+                    max_up: tuning.refine_max_up,
+                    max_down: tuning.refine_max_down,
+                    deadzone: tuning.refine_deadzone,
+                },
+                &mut st,
+                syms,
+                raw,
+            );
+        }
+    }
+    recon
+}
+
+/// Декодирует один корень 32×32 линии v14: матрицы `(dq, ts)` корня,
+/// refinement детей наследует `ts`.
+#[allow(clippy::too_many_arguments)]
+fn decode_root_v14(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    recon: &mut [i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    rx: usize,
+    ry: usize,
+    cache: &mut DqTsCache,
+    root_dq: u8,
+    root_ts: u8,
+    st: &mut CtxV7,
+    freq32: &mut [f32; 1024],
+    spatial32: &mut [f32; 1024],
+) -> Result<(), DecodeError> {
+    match bank.decode(dec, CTX7_SPLIT32)? {
+        SPLIT_WHOLE => {
+            let m = cache.mats(root_dq, root_ts);
+            decode_whole32(
+                bank, dec, raw, recon, cfl_luma, w, h, rx, ry, &m.qmat32, st, freq32, spatial32,
+            )?;
+        }
+        SPLIT_QUAD => {
+            for (sbx, sby) in child_nodes16(rx, ry, w, h) {
+                let sym = bank.decode(dec, CTX11_DQR)?;
+                let level = dqr_effective(root_dq, sym) as u8;
+                let m = cache.mats(level, root_ts);
+                decode_node16(
+                    bank, dec, raw, recon, cfl_luma, w, h, sbx, sby, &m.qmat, &m.qmat4, &m.qmat16,
+                    st,
+                )?;
+            }
+        }
+        _ => return Err(DecodeError::Corrupt("dct32: неизвестное split-решение")),
+    }
+    Ok(())
+}
+
+/// Декодирует тайл-плоскость v14: `dq` и `ts` на корень, любые символы валидны.
+pub(super) fn decode_tile_plane_v14(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    cfl_luma: Option<&[i16]>,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    if cfl_luma.is_some_and(|luma| luma.len() != w * h) {
+        return Err(DecodeError::Corrupt("CfL: неверный размер luma"));
+    }
+    let root_cols = w.div_ceil(32);
+    let root_rows = h.div_ceil(32);
+    let mut cache = DqTsCache::new(qmat);
+    let mut recon = vec![0i16; w * h];
+    let mut st = CtxV7::default();
+    let mut freq32 = Box::new([0f32; 1024]);
+    let mut spatial32 = Box::new([0f32; 1024]);
+
+    for ry in 0..root_rows {
+        for rx in 0..root_cols {
+            let root_dq = bank.decode(dec, CTX9_DQ)?;
+            let root_ts = bank.decode(dec, CTX14_TS)?;
+            debug_assert!(usize::from(root_dq) < DQ_NUMERATORS.len());
+            decode_root_v14(
+                bank,
+                dec,
+                raw,
+                &mut recon,
+                cfl_luma,
+                w,
+                h,
+                rx,
+                ry,
+                &mut cache,
+                root_dq,
+                root_ts,
+                &mut st,
+                &mut freq32,
+                &mut spatial32,
+            )?;
+        }
+    }
+    Ok(recon)
+}
+
 /// Декодирует один корень 32×32 линии v11: whole32 — матрицы корня;
 /// при расщеплении перед каждым ребёнком читается refinement-символ,
 /// узел декодируется матрицами эффективной ступени.
@@ -2647,6 +3305,45 @@ mod tests {
             assert!(scaled[0] >= prev, "шаг DQ не монотонен");
             assert!(scaled.iter().all(|&q| (1..=255).contains(&q)));
             prev = scaled[0];
+        }
+    }
+
+    #[test]
+    fn ts_tilt_is_identity_at_zero_and_keeps_dc() {
+        let qmat = quant_matrix(&crate::dct::BASE_Y_V8, 75);
+        assert_eq!(ts_tilt_qmat(&qmat, 0), qmat, "ts=0 — семантика v13");
+        for ts in 1..=3u8 {
+            let tilted = ts_tilt_qmat(&qmat, ts);
+            assert_eq!(tilted[0], qmat[0], "DC не масштабируется");
+            assert!(tilted.iter().all(|&q| (1..=255).contains(&q)));
+        }
+    }
+
+    #[test]
+    fn ts_tilt_is_monotonic_and_zone_ordered() {
+        let qmat = quant_matrix(&crate::dct::BASE_Y_V8, 75);
+        for i in 1..64 {
+            let (low, mid, high) = (
+                ts_tilt_qmat(&qmat, 1)[i],
+                ts_tilt_qmat(&qmat, 2)[i],
+                ts_tilt_qmat(&qmat, 3)[i],
+            );
+            assert!(low <= mid && mid <= high, "tilt не монотонен в {i}");
+        }
+        // Зоны: позиция 1 (s=1) — LOW, позиция 4 (s=4) — MID,
+        // позиция 8 (s=6) — HIGH; на ts=3 шаг растёт по зонам.
+        let t3 = ts_tilt_qmat(&qmat, 3);
+        assert!(t3[1] < t3[8 + 4] || qmat[1] == 255);
+    }
+
+    #[test]
+    fn ts_tilt_clamps_to_ladder() {
+        let mut qmat = [255u16; 64];
+        qmat[0] = 7;
+        for ts in 0..=3u8 {
+            let tilted = ts_tilt_qmat(&qmat, ts);
+            assert_eq!(tilted[0], 7);
+            assert!(tilted.iter().all(|&q| (1..=255).contains(&q)));
         }
     }
 

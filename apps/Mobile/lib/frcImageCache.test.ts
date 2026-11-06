@@ -51,7 +51,7 @@ describe("sniffImageHeader", () => {
     expect(FRC_VERSION_MAX).toBe(FRC_I_BITSTREAM_VERSION);
   });
 
-  it("accepts current wire versions including v11, v12 and v13", () => {
+  it("accepts current wire versions including v11, v12, v13 and v14", () => {
     expect(sniffImageHeader(friHeader(8, 100, 100)).kind).toBe("frc-i");
     expect(sniffImageHeader(friHeader(9, 1080, 1430)).kind).toBe("frc-i");
     expect(sniffImageHeader(friHeader(10, 1080, 1430)).kind).toBe("frc-i");
@@ -68,10 +68,17 @@ describe("sniffImageHeader", () => {
       width: 1080,
       height: 1430,
     });
-    // v13 — текущий публичный кодер (wire v11, rate-aware RD; frc-i.md §7.21).
+    // v13 — замороженный rate-aware RD (wire v11; frc-i.md §7.21).
     expect(sniffImageHeader(friHeader(13, 1080, 1430))).toEqual({
       kind: "frc-i",
       version: 13,
+      width: 1080,
+      height: 1430,
+    });
+    // v14 — публичный кодер (частотная форма `ts`; frc-i.md §7.22).
+    expect(sniffImageHeader(friHeader(14, 1080, 1430))).toEqual({
+      kind: "frc-i",
+      version: 14,
       width: 1080,
       height: 1430,
     });
