@@ -51,10 +51,14 @@ pub const VERSION_PERCEPTUAL_RD: u8 = 12;
 /// оставшихся констант PSNR-эпохи: компенсация split 8→4 ×0.20, поиск
 /// transform с полной λ решений (×1.05), dead-zone AC 0.32; λ решений и
 /// SAD-предотбор подтверждены без изменений. Публичный lossy-кодер
-/// пишет v13.
+/// пишет v13 (заморозка; публичный кодер с этой линии пишет v14).
 pub const VERSION_RATE_AWARE_RD: u8 = 13;
+/// Версия v14 (frc-i.md §7.22): wire v11–v13 плюс сигналируемый индекс
+/// частотной формы `ts ∈ 0..=3` (множитель AC-ступеней). Публичный
+/// lossy-кодер пишет v14. Контексты 0..=84, prior `[16, 8, 5, 3]`.
+pub const VERSION_FREQ_SHAPE: u8 = 14;
 /// Максимальная версия, которую читает этот декодер.
-pub const VERSION_MAX: u8 = VERSION_RATE_AWARE_RD;
+pub const VERSION_MAX: u8 = VERSION_FREQ_SHAPE;
 /// Минимальная версия, которую декодер обязан читать всегда.
 pub const VERSION_MIN: u8 = 1;
 /// Длина фиксированного заголовка.
@@ -101,7 +105,7 @@ pub const TILE: usize = 1 << TILE_SHIFT;
 /// Разобранный заголовок FRC-I.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
-    /// Версия битстрима (`VERSION_MIN..=VERSION_MAX`, сейчас 1..=13); раскладка заголовка у всех одинаковая.
+    /// Версия битстрима (`VERSION_MIN..=VERSION_MAX`, сейчас 1..=14); раскладка заголовка у всех одинаковая.
     pub version: u8,
     pub width: u32,
     pub height: u32,

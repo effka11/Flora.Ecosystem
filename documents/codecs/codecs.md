@@ -18,8 +18,8 @@ CODECS — политика сжатия и хранения медиа в эк�
 
 Нативные кодеки Flora (семейство **FRC**, Flora Reproducible Codec, разработка):
 
-- [`frc-i.md`](./frc-i.md) — фото (FRC-I), замороженный битстрим v13
-  (ранее FMC/FIC; decoder compatibility v1..v13).
+- [`frc-i.md`](./frc-i.md) — фото (FRC-I): публичный битстрим v14
+  (ранее FMC/FIC; decoder compatibility v1..v14).
 - [`frc-i-version-bump.md`](./frc-i-version-bump.md) — playbook: поднять wire-версию
   и согласовать Rust / TS gate / wasm / goldens (без «пустых фото» на Web).
 - [`frc-a.md`](./frc-a.md) — аудио (FRC-A), битстрим v0 (draft).
@@ -152,7 +152,7 @@ ffmpeg -hide_banner -encoders | Select-String "svtav1| aac "
 
 | Кодек | Сигнатура | Расширение | MIME (предложение) | Статус |
 | --- | --- | --- | --- | --- |
-| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v13 (wire v11; rate-aware докалибровка reference-кодера: split 8→4 ×0.20, поиск transform ×1.05, dead-zone 0.32); на Kodak v12 хуже на S2 +4.7%/BA +5.7%/PSNR +3.8%, encode v13 12.3 Мп/с против 12.7 у v12; JXL e9 лучше по S2 на 21% BD и хуже по PSNR на 18% ([frc-i.md](./frc-i.md) §7.21, §11.11) |
+| FRC-I | magic `8F 46 52 49` (`\x8F FRI`) | `.fri` | `image/x-flora-frc-i` | frozen v14 (публичный кодер; wire v11 + per-root `ts`; кадровое `ts ∈ {0,1}` по доле горячих корней; Kodak S2 −1.73% / BA −0.28%, picsum S2 −0.78% / BA −0.34% vs v13) ([frc-i.md](./frc-i.md) §7.22, §11.12) |
 | FRC-V | FourCC `FRV1` в IVF (dev); magic `8F 46 52 56` (`\x8F FRV`) в `.frv` | `.frv`, `.ivf` | `video/x-flora-frc-v` | кадр `BITSTREAM_VERSION=2`; контейнер FRC-V |
 | FRC-A | **as-built:** ASCII `FRAS` (4 B) в файловом контейнере инструментов; **резерв:** magic `8F 46 52 41` (`\x8F FRA`) под нативный `.fra` | `.fras` (dev), `.fra` (резерв) | `audio/x-flora-frc-a` | битстрим v0 |
 

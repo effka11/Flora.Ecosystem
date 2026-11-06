@@ -384,14 +384,17 @@ impl Contestant {
     ) -> Result<RunOutcome, String> {
         let what = format!("{} decode", self.id);
         match &self.kind {
-            Kind::Fri { .. } => spawn(
-                Command::new(&env.flora_bin)
-                    .arg("image")
-                    .arg("decode")
-                    .arg(bitstream)
-                    .arg(out_png),
-                &what,
-            ),
+            // Env стороны передаётся и декодеру: pre-freeze wire-ручки
+            // (`FRC_I_TS_TABLE`) обязаны действовать одинаково на обеих
+            // сторонах, иначе измеряется рассинхрон, а не кандидат.
+            Kind::Fri { env: pairs, .. } => {
+                let mut cmd = Command::new(&env.flora_bin);
+                cmd.arg("image").arg("decode").arg(bitstream).arg(out_png);
+                for (k, v) in pairs {
+                    cmd.env(k, v);
+                }
+                spawn(&mut cmd, &what)
+            }
             Kind::Jpeg => spawn(
                 Command::new(&env.ffmpeg)
                     .args(["-y", "-v", "error", "-f", "mjpeg", "-i"])

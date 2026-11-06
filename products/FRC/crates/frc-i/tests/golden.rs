@@ -8,12 +8,12 @@
 //!   `encode_with_version` и могут служебно регенерироваться с
 //!   `FRC_I_UPDATE_GOLDEN=1`. Замороженные lossy v7..v12 фиксируются через
 //!   явные `encode_with_version`/`encode_with_icc_version` и неизменяемы:
-//!   расхождение — ошибка реализации. Текущий frozen v12 также пишется
-//!   публичными `encode`/`encode_with_icc`.
+//!   расхождение — ошибка реализации. Текущий публичный lossy — v14
+//!   (`encode`/`encode_with_icc`).
 
 use frc_i::{
     EncodeMode, ImageView, PixelFormat, decode, encode, encode_with_icc, encode_with_icc_version,
-    encode_with_version, read_icc, read_info,
+    encode_with_version, encode_with_version_ts, read_icc, read_info,
 };
 use std::path::PathBuf;
 
@@ -749,7 +749,7 @@ fn golden_v12_lossy_decode_is_deterministic() {
             format: PixelFormat::Rgba8,
             data: &data,
         };
-        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 12).unwrap();
         let out = decode(&fri).unwrap();
         println!("golden v12 decode fnv1a = {:#018X}", fnv1a(&out.data));
         return;
@@ -791,7 +791,8 @@ fn golden_v13_lossy_bitstream_frozen() {
     // Источник v11 (гетерогенные корни) переиспользуется: v13 меняет не AQ,
     // а компенсацию split 8→4, поиск transform и dead-zone — на этом
     // содержимом дерево и коэффициенты обязаны разойтись с v12 не только
-    // байтом версии.
+    // байтом версии. Публичный кодер с v14 пишет v14, поэтому v13
+    // фиксируется явным `encode_with_version`.
     let (w, h, data) = golden_v11_source();
     let img = ImageView {
         width: w,
@@ -799,16 +800,14 @@ fn golden_v13_lossy_bitstream_frozen() {
         format: PixelFormat::Rgba8,
         data: &data,
     };
-    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 13).unwrap();
     let info = read_info(&fri).unwrap();
-    assert_eq!(info.version, 13, "публичный lossy-кодер должен писать v13");
-    assert!(!info.metadata);
-    check_or_update("golden-v13-lossy-q75.fri", &fri);
     assert_eq!(
-        fri,
-        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 13).unwrap(),
-        "публичный encode() обязан совпадать с явным v13"
+        info.version, 13,
+        "замороженный v13 кодируется явной версией"
     );
+    assert!(!info.metadata);
+    check_frozen("golden-v13-lossy-q75.fri", &fri);
     let mut relabeled_v12 =
         encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 12).unwrap();
     relabeled_v12[4] = 13;
@@ -829,7 +828,7 @@ fn golden_v13_lossy_decode_is_deterministic() {
             format: PixelFormat::Rgba8,
             data: &data,
         };
-        let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 13).unwrap();
         let out = decode(&fri).unwrap();
         println!("golden v13 decode fnv1a = {:#018X}", fnv1a(&out.data));
         return;
@@ -854,11 +853,117 @@ fn golden_v13_lossy_icc_bitstream_frozen() {
         data: &data,
     };
     let icc = golden_icc();
-    let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let fri = encode_with_icc_version(&img, EncodeMode::Lossy { quality: 75 }, &icc, 13).unwrap();
     let info = read_info(&fri).unwrap();
     assert_eq!(info.version, 13);
     assert!(info.metadata);
-    check_or_update("golden-v13-lossy-icc-q75.fri", &fri);
+    check_frozen("golden-v13-lossy-icc-q75.fri", &fri);
+    assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
+    let decoded = decode(&fri).unwrap();
+    assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));
+}
+
+// --- v14: decode-новинка (per-root частотная форма) -------------------------
+
+/// Источник v14: гомогенная высокочастотная текстура (шахматная амплитуда 36)
+/// на всех корнях. Доля «горячих» корней (`l ≥ TS_L0`) выше `TS_GF` —
+/// кадровое решение mode 8 обязано сигналить `ts = TS_MAX` на каждом корне.
+fn golden_v14_source() -> (u32, u32, Vec<u8>) {
+    let (w, h) = (193u32, 129u32);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let texture = if (x + y) & 1 == 0 { 36 } else { -36 };
+            let ramp = 84 + (x * 40 / w + y * 24 / h) as i32;
+            data.push((ramp + texture).clamp(0, 255) as u8);
+            data.push((ramp + 12 + texture).clamp(0, 255) as u8);
+            data.push((ramp - 8 + texture).clamp(0, 255) as u8);
+            data.push(if (x / 11 + y / 7) % 2 == 0 { 255 } else { 208 });
+        }
+    }
+    (w, h, data)
+}
+
+#[test]
+fn golden_v14_lossy_bitstream_frozen() {
+    let (w, h, data) = golden_v14_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let fri = encode(&img, EncodeMode::Lossy { quality: 75 }).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 14, "публичный lossy-кодер пишет v14");
+    assert!(!info.metadata);
+    check_frozen("golden-v14-lossy-q75.fri", &fri);
+    assert_eq!(
+        fri,
+        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 14).unwrap(),
+        "публичный encode() обязан совпадать с явным v14"
+    );
+    let mut relabeled_v13 =
+        encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 13).unwrap();
+    relabeled_v13[4] = 14;
+    assert_ne!(
+        fri, relabeled_v13,
+        "v14 golden обязан фиксировать активные TS-решения, а не только version byte"
+    );
+    // Перемаркированный v13 не является корректным v14 (в нём нет TS-символов),
+    // поэтому активность TS доказывается нейтральной стороной того же кодировщика.
+    let neutral =
+        encode_with_version_ts(&img, EncodeMode::Lossy { quality: 75 }, 14, &[0]).unwrap();
+    assert_ne!(
+        decode(&fri).unwrap().data,
+        decode(&neutral).unwrap().data,
+        "v14 с активным ts обязан менять пиксели относительно ts = 0"
+    );
+}
+
+#[test]
+fn golden_v14_lossy_decode_is_deterministic() {
+    // FNV-1a выхода декодера v14 (пиксели 193×129 RGBA); заполняется
+    // генерацией `FRC_I_UPDATE_GOLDEN=1` и затем фиксируется.
+    const EXPECTED_FNV1A: u64 = 0x1E90_E793_2E70_AED8;
+    if std::env::var_os("FRC_I_UPDATE_GOLDEN").is_some() {
+        let (w, h, data) = golden_v14_source();
+        let img = ImageView {
+            width: w,
+            height: h,
+            format: PixelFormat::Rgba8,
+            data: &data,
+        };
+        let fri = encode_with_version(&img, EncodeMode::Lossy { quality: 75 }, 14).unwrap();
+        let out = decode(&fri).unwrap();
+        println!("golden v14 decode fnv1a = {:#018X}", fnv1a(&out.data));
+        return;
+    }
+    let fri = std::fs::read(data_path("golden-v14-lossy-q75.fri")).expect("нет golden-файла v14");
+    let out = decode(&fri).unwrap();
+    assert_eq!((out.width, out.height), (193, 129));
+    assert_eq!(
+        fnv1a(&out.data),
+        EXPECTED_FNV1A,
+        "выход декодера v14 недетерминирован"
+    );
+}
+
+#[test]
+fn golden_v14_lossy_icc_bitstream_frozen() {
+    let (w, h, data) = golden_v14_source();
+    let img = ImageView {
+        width: w,
+        height: h,
+        format: PixelFormat::Rgba8,
+        data: &data,
+    };
+    let icc = golden_icc();
+    let fri = encode_with_icc(&img, EncodeMode::Lossy { quality: 75 }, &icc).unwrap();
+    let info = read_info(&fri).unwrap();
+    assert_eq!(info.version, 14);
+    assert!(info.metadata);
+    check_frozen("golden-v14-lossy-icc-q75.fri", &fri);
     assert_eq!(read_icc(&fri).unwrap().as_deref(), Some(icc.as_slice()));
     let decoded = decode(&fri).unwrap();
     assert_eq!(decoded.icc.as_deref(), Some(icc.as_slice()));

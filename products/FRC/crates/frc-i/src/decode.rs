@@ -15,7 +15,9 @@ use crate::color::{
 use crate::dct::{quant_matrices, quant_matrices_v8, quant_matrices_v9};
 use crate::error::DecodeError;
 use crate::format::{HEADER_LEN, Header, Metadata, TileRect, parse_metadata_block, tile_grid};
-use crate::format::{VERSION_ADAPTIVE, VERSION_HIER_AQ, VERSION_PERCEPTUAL, VERSION_RECT};
+use crate::format::{
+    VERSION_ADAPTIVE, VERSION_FREQ_SHAPE, VERSION_HIER_AQ, VERSION_PERCEPTUAL, VERSION_RECT,
+};
 use crate::parallel::par_map;
 use crate::plane::{Plane, PlaneShape, RANGE_CHROMA_LOSSLESS, RANGE_LUMA, palette_range};
 use crate::rans::RansDecoder;
@@ -232,8 +234,11 @@ fn decode_tile(
     } else {
         // v7+: банк адаптивных моделей общий для всех плоскостей тайла.
         // Раскладка v8 совпадает с v7 (отличие v8 — цвет/qmat); v9+ добавляет
-        // DQ, v11 — DQR (refinement детей 16×16).
-        let mut bank = if version >= VERSION_HIER_AQ {
+        // DQ, v11 — DQR (refinement детей 16×16), v14 — TS (частотная форма).
+        let mut bank = if version >= VERSION_FREQ_SHAPE {
+            let (groups, kinds) = lossy::ctx_meta_v14();
+            Some(ModelBank::new(groups, kinds))
+        } else if version >= VERSION_HIER_AQ {
             let (groups, kinds) = lossy::ctx_meta_v11();
             Some(ModelBank::new(groups, kinds))
         } else if version >= VERSION_PERCEPTUAL {
@@ -368,7 +373,9 @@ fn read_dct_plane(
         if cdef_strength >= crate::cdef::N_STRENGTHS {
             return Err(DecodeError::Corrupt("CDEF: неизвестная сила"));
         }
-        let buf = if version >= VERSION_HIER_AQ {
+        let buf = if version >= VERSION_FREQ_SHAPE {
+            lossy::decode_tile_plane_v14(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
+        } else if version >= VERSION_HIER_AQ {
             lossy::decode_tile_plane_v11(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?
         } else if version >= VERSION_PERCEPTUAL {
             lossy::decode_tile_plane_v9(bank, &mut dec, &mut raw, w, h, cfl_luma, qmat)?

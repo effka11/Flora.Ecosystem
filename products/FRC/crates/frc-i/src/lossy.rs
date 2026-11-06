@@ -2020,6 +2020,11 @@ pub const N_CTX_V9: usize = 83;
 const CTX11_DQR: u8 = 83;
 /// Общее число контекстов v11 (раскладка v9 + DQR).
 pub const N_CTX_V11: usize = 84;
+/// Индекс частотной формы корня 32×32 (v14, сразу после `dq`):
+/// 0 — плоская матрица (семантика v13), 1..=3 — tilt AC-ступеней.
+pub const CTX14_TS: u8 = 84;
+/// Общее число контекстов v14 (раскладка v11 + TS).
+pub const N_CTX_V14: usize = 85;
 const N_POS_BUCKETS: u8 = 6;
 
 /// Родительские группы и виды моделей контекстов v7 для иерархического
@@ -2081,6 +2086,17 @@ pub fn ctx_meta_v11() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
     groups.push(24);
     kinds.push(crate::arith::ModelKind::DqRefine);
     debug_assert_eq!(groups.len(), N_CTX_V11);
+    (groups, kinds)
+}
+
+/// Раскладка контекстов v14: раскладка v11 плюс TS-контекст частотной
+/// формы корня (собственная родительская группа прогрева).
+pub fn ctx_meta_v14() -> (Vec<u8>, Vec<crate::arith::ModelKind>) {
+    let (mut groups, mut kinds) = ctx_meta_v11();
+    debug_assert_eq!(groups.len(), usize::from(CTX14_TS));
+    groups.push(25);
+    kinds.push(crate::arith::ModelKind::FreqShape);
+    debug_assert_eq!(groups.len(), N_CTX_V14);
     (groups, kinds)
 }
 
@@ -2323,6 +2339,147 @@ pub struct DqTuning {
     /// гетерогенность: меньшие зоны ловят шумовые ±1-коррекции дисперсии
     /// MAD16 и контраст «текстура против текстуры» плотных кадров.
     pub refine_deadzone: i32,
+}
+
+/// Параметры кодерной эвристики частотной формы v14 (свобода кодера:
+/// декодер читает любой `ts`; калибровка — §11.12).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TsTuning {
+    /// Выключить эвристику (все `ts = 0`) — сторона «нейтраль» для A/B.
+    pub enable: bool,
+    /// Выше этого качества tilt не включается.
+    pub qmax: u8,
+    /// Минимальная ступень delta-Q корня: уточнённые корни не наклоняем.
+    pub dqmin: u8,
+    /// Смещение лог-активности.
+    pub l0: f32,
+    /// Ступеней индекса на октаву активности.
+    pub slope: f32,
+    /// Потолок индекса (0..=3).
+    pub max: u8,
+    /// Наклон хромы (ожидается провал — §11.8; контрольный прогон).
+    pub chroma: bool,
+    /// Ниже этого качества tilt не включается.
+    pub qmin: u8,
+    /// Максимальная ступень delta-Q корня (выше — `ts = 0`).
+    pub dqmax: u8,
+    /// Сигнал решения: 0 — лог-активность (§4.1), 1 — режим коэффициентов
+    /// (плотность и точность HF-коэффициентов в ступенях шага).
+    pub mode: u8,
+    /// Режим 1: ниже этой плотности ненулевых HF корень считается «пустым».
+    pub d0: f32,
+    /// Режим 1: пороги средней величины ненулевых HF (в ступенях) для
+    /// `ts = 1 / 2 / 3`.
+    pub p1: f32,
+    pub p2: f32,
+    pub p3: f32,
+    /// Режим 1: индекс для «пустых» корней.
+    pub dead: u8,
+    /// Режим 4: индекс по ступени delta-Q корня (`dqmap[dq]`).
+    pub dqmap: [u8; 8],
+    /// Режим 5: пороги качества расписания (`q ≤ q2 → max`, `≤ q1 → 1`).
+    pub q2: u8,
+    pub q1: u8,
+    /// λ решений корня от наклонённой матрицы (`true`, §3.4 плана) или от
+    /// матрицы ступени без наклона (`false`).
+    pub lambda_tilt: bool,
+    /// Режим 7: порог средней лог-активности кадра. Ниже — все `ts = 0`,
+    /// иначе все корни получают `max` (без внутрикадровых границ).
+    pub g0: f32,
+    /// Режим 8: доля корней с `log2(1+a) ≥ l0`, ниже которой кадр не
+    /// наклоняется.
+    pub gf: f32,
+    /// Режим 9: нижний квартиль лог-активности. Кадр с большой гладкой
+    /// зоной (небо, вода, кожа) не наклоняется, даже если доля «горячих»
+    /// корней высока.
+    pub gp: f32,
+    /// Режим 11: допустимый рост SSE AC при наклоне (`sse1 ≤ sse0·(1+τ)`).
+    /// Гладкая кожа/небо даёт большой относительный рост — кадр пропускается.
+    pub tau: f32,
+}
+
+impl TsTuning {
+    pub const DISABLED: Self = Self {
+        enable: false,
+        qmax: 0,
+        dqmin: 0,
+        l0: 0.0,
+        slope: 0.0,
+        max: 0,
+        chroma: false,
+        qmin: 0,
+        dqmax: 7,
+        mode: 0,
+        d0: 0.0,
+        p1: 0.0,
+        p2: 0.0,
+        p3: 0.0,
+        dead: 0,
+        dqmap: [0; 8],
+        q2: 0,
+        q1: 0,
+        lambda_tilt: true,
+        g0: 0.0,
+        gf: 0.0,
+        gp: 0.0,
+        tau: 0.0,
+    };
+}
+
+/// Параметры кодерной эвристики инструмента B (этап 3; до G2 wire нет).
+/// Заглушка: поля и чтение ручек есть, потребителей нет до открытия этапа.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CsTuning {
+    pub enable: bool,
+}
+
+#[allow(dead_code)]
+impl CsTuning {
+    pub const DISABLED: Self = Self { enable: false };
+}
+
+/// Кадровое решение `ts` для режимов 7–11: одно значение на весь кадр,
+/// чтобы соседние тайлы 256×256 не смешивали наклон (BA-хотспоты на швах).
+/// `None` — оставить per-root/per-tile эвристику (режимы 0–6).
+pub fn frame_ts_pattern(
+    buf: &[i16],
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    dq_tuning: DqTuning,
+    ts_tuning: TsTuning,
+    quality: u8,
+) -> Option<Vec<u8>> {
+    if ts_tuning.mode < 7 {
+        return None;
+    }
+    // 7–11 — кадровые режимы: одно значение на весь кадр.
+    let n = w.div_ceil(32) * h.div_ceil(32);
+    let dqs = vec![4u8; n];
+    let map = v72::choose_ts_indices(buf, w, h, &dqs, qmat, dq_tuning, ts_tuning, quality);
+    Some(vec![map.first().copied().unwrap_or(0)])
+}
+
+/// Кодирует тайл-плоскость v14: `dq → ts` перед деревом каждого корня 32×32.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_tile_plane_v14(
+    buf: &[i16],
+    cfl_luma: Option<&[i16]>,
+    w: usize,
+    h: usize,
+    qmat: &[u16; 64],
+    tuning: DqTuning,
+    ts_tuning: TsTuning,
+    quality: u8,
+    forced_ts: Option<&[u8]>,
+    rd_tuning: RdTuning,
+    syms: &mut Vec<(u8, u8)>,
+    raw: &mut BitWriter,
+) -> Vec<i16> {
+    v72::encode_tile_plane_v14(
+        buf, cfl_luma, w, h, qmat, tuning, ts_tuning, quality, forced_ts, rd_tuning, syms, raw,
+    )
 }
 
 /// Кодирует дерево тайл-плоскости v9: per-root delta-Q поверх дерева v7.
@@ -2574,6 +2731,19 @@ pub fn decode_tile_plane_v7(
     qmat: &[u16; 64],
 ) -> Result<Vec<i16>, DecodeError> {
     v72::decode_tile_plane(bank, dec, raw, w, h, cfl_luma, qmat)
+}
+
+/// Декодирует дерево тайл-плоскости v14 (`dq`, `ts` на корень).
+pub fn decode_tile_plane_v14(
+    bank: &mut ModelBank,
+    dec: &mut RangeDecoder<'_>,
+    raw: &mut BitReader<'_>,
+    w: usize,
+    h: usize,
+    cfl_luma: Option<&[i16]>,
+    qmat: &[u16; 64],
+) -> Result<Vec<i16>, DecodeError> {
+    v72::decode_tile_plane_v14(bank, dec, raw, w, h, cfl_luma, qmat)
 }
 
 /// Декодирует дерево тайл-плоскости v9 (per-root delta-Q).
