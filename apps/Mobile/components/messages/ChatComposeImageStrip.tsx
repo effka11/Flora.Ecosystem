@@ -8,7 +8,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from "react-native";
-import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
+import { floraColors, floraMessages, floraSpacing, kegl, sPx } from "@/lib/theme";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
 
 type Props = {
@@ -54,7 +54,8 @@ export function ChatComposeImageStrip({ images, onRemoveAt, onLayout }: Props) {
 const styles = liveGridStyles(() => StyleSheet.create({
   strip: {
     gap: floraSpacing.gridFine,
-    paddingBottom: floraSpacing.gridFine,
+    /** Зазор до поля ввода = верхнему зазору оболочки (полоса → линия дока). */
+    paddingBottom: floraMessages.composeShellPaddingTop,
   },
   item: {
     width: sPx(56),
