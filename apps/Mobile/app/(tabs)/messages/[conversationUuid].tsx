@@ -1179,9 +1179,17 @@ export function ThreadScreen({
     prepareError: composePrepareError,
     clearPrepareError,
     clearImages,
+    restoreImages,
     removeImageAt,
     pickImages,
   } = useMessageComposeImages();
+
+  /**
+   * Тред, в котором живёт поле прямо сейчас: экран переиспользуется под другой
+   * чат, и поздний сбой отправки не должен возвращать фото в чужой композер.
+   */
+  const composeThreadUuidRef = useRef(conversationUuid);
+  composeThreadUuidRef.current = conversationUuid;
 
   const {
     mode: voiceMode,
@@ -2845,13 +2853,33 @@ export function ThreadScreen({
     }
   }, [voiceMode]);
 
+  /** Текущий текст поля без поднятия состояния в экран — нужен для возврата черновика. */
+  const composeTextRef = useRef("");
   const onComposeTextChange = useCallback((text: string) => {
+    composeTextRef.current = text;
     typingEmitterRef.current?.onText(text);
   }, []);
 
   const onSend = async (draft: string) => {
     if (sending) return;
     const trimmed = draft.trim();
+    /**
+     * Снимок поля на момент тапа: текст и полоса очищаются сразу, а сбой
+     * отправки возвращает черновик.
+     */
+    const imageDrafts = composeImages;
+    const restoreClearedImages = () => {
+      if (imageDrafts.length === 0) return;
+      if (composeThreadUuidRef.current !== conversationUuid) return;
+      restoreImages(imageDrafts);
+    };
+    const restoreClearedText = () => {
+      if (draft.length === 0) return;
+      if (composeThreadUuidRef.current !== conversationUuid) return;
+      // Пока сообщение летело, пользователь мог начать новое — его текст не трогаем.
+      if (composeTextRef.current.length > 0) return;
+      composeRef.current?.setText(draft);
+    };
 
     if (isGroupChat) {
       if (!conversationUuid || !me?.userUuid) return;
@@ -2872,6 +2900,10 @@ export function ThreadScreen({
       const activeReply = replyTo;
       setSending(true);
       atBottomRef.current = true;
+      /* Поле и полоса уходят на «Отправить», а не по факту доставки: ожидание
+         сети внизу читается как «сообщение не отправилось». */
+      if (imageDrafts.length > 0) clearImages();
+      if (draft.length > 0) composeRef.current?.clearText();
       try {
         if (imageSnapshot.length === 0) {
           const result = await groupThread.sendText(trimmed, {
@@ -2886,10 +2918,10 @@ export function ThreadScreen({
             },
           });
           if (result.ok) {
-            composeRef.current?.clearText();
-            clearImages();
             setReplyTo(null);
             setDeleteBarHeightPx(0);
+          } else {
+            restoreClearedText();
           }
           return;
         }
@@ -2920,12 +2952,15 @@ export function ThreadScreen({
           },
         });
         if (result.ok) {
-          composeRef.current?.clearText();
-          clearImages();
           setReplyTo(null);
           setDeleteBarHeightPx(0);
+        } else {
+          restoreClearedImages();
+          restoreClearedText();
         }
       } catch (err) {
+        restoreClearedImages();
+        restoreClearedText();
         const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
         Alert.alert("Отправка", message);
       } finally {
@@ -2972,6 +3007,10 @@ export function ThreadScreen({
     seenMessageIdsRef.current.add(clientMessageKey);
     pinListToBottom(false);
     playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(optimisticBlocks, outgoingLiftCtx));
+    /* Фото и текст уже в оптимистичной строке (локальные URI посеяны выше) —
+       поле и полоса уходят сразу, не дожидаясь доставки. */
+    if (imageDrafts.length > 0) clearImages();
+    if (draft.length > 0) composeRef.current?.clearText();
 
     try {
       const peerKey = await apiGetUserE2ePublicKey(otherUserUuid);
@@ -3001,6 +3040,8 @@ export function ThreadScreen({
           otherUserUuid,
           clientMessageKey,
         });
+        restoreClearedImages();
+        restoreClearedText();
         return;
       }
 
@@ -3024,10 +3065,6 @@ export function ThreadScreen({
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
         encryptedPushPreviews,
       });
-      // Черновик живёт до успеха: сетевая ошибка/незадеплоенный FRI не должны
-      // съедать выбранные фото (раньше cleared draft не восстанавливался).
-      composeRef.current?.clearText();
-      clearImages();
       setReplyTo(null);
       setDeleteBarHeightPx(0);
       replaceOptimisticOutgoingThreadMessage({
@@ -3062,6 +3099,8 @@ export function ThreadScreen({
         otherUserUuid,
         clientMessageKey,
       });
+      restoreClearedImages();
+      restoreClearedText();
       const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       Alert.alert("Отправка", message);
     } finally {
