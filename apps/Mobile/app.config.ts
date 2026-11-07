@@ -8,8 +8,8 @@ const DEV_ICON = "./assets/images/icon-dev.png";
 const ADAPTIVE_FOREGROUND = "./assets/images/android-icon-foreground.png";
 const ADAPTIVE_FOREGROUND_DEV = "./assets/images/android-icon-foreground-dev.png";
 const ADAPTIVE_MONOCHROME = "./assets/images/android-icon-monochrome.png";
-/** Brand pair: release runs the light polarity, Dev the dark one. */
-const PROD_ADAPTIVE_BG = "#dde2e8";
+/** Light-theme canvas: release runs the light polarity, Dev the dark one. */
+const PROD_ADAPTIVE_BG = "#f3f5f8";
 const DEV_ADAPTIVE_BG = "#0a0a0a";
 
 export const isDevelopmentVariant = () => process.env.APP_VARIANT === "development";

@@ -11,17 +11,19 @@ import sharp from "sharp";
 /** Brand monochrome pair — documents/design/color-reference.md. */
 const BRAND_BLACK = "#0a0a0a";
 const BRAND_SILVER = "#dde2e8";
+/** Light-theme canvas (Cold Paper) — documents/design/color-reference.md. */
+const LIGHT_PAPER = "#f3f5f8";
 /** App canvas behind splash and the system bars. */
 const FLORA_BG = BRAND_BLACK;
 /** Plate baked into flora-logo-v1.svg. plantCoverage measures the plant against this field. */
 const LOGO_BG = BRAND_BLACK;
 const LOGO_GREEN = "#a1cd87";
 /**
- * Launcher polarity: Dev is the dark theme, release the light theme.
- * Both use only the brand pair; the light variant simply inverts the two.
+ * Launcher polarity follows the app themes: Dev is the dark canvas with
+ * silver ink, release the light canvas with black ink.
  */
 const ICON_DARK = { plate: BRAND_BLACK, ink: BRAND_SILVER };
-const ICON_LIGHT = { plate: BRAND_SILVER, ink: BRAND_BLACK };
+const ICON_LIGHT = { plate: LIGHT_PAPER, ink: BRAND_BLACK };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "apps", "Mobile");

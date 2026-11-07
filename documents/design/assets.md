@@ -43,15 +43,15 @@
 
 Каталог `apps/Mobile/assets/images/`. Сборка читает их из `apps/Mobile/app.json` и `app.config.ts`.
 
-Иконки приложения — чистая брендовая пара **Neutral Black + Cold Silver**: Dev — тёмная полярность (серебро на чёрном), релиз — светлая (чёрное на серебре). Промежуточных зелёных оттенков в иконках нет.
+Иконки приложения следуют полярностям тем: Dev — тёмная (серебро на чёрном), релиз — светлая (чёрное на холсте `#f3f5f8`).
 
 | Файл | Роль |
 |------|------|
-| `icon.png` | Иконка релиза: чёрное растение на серебре `#dde2e8` |
+| `icon.png` | Иконка релиза: чёрное растение на холсте светлой темы `#f3f5f8` |
 | `icon-dev.png` | Иконка Dev: серебряное растение на чёрном `#0a0a0a` |
 | `android-icon-foreground.png`, `android-icon-foreground-dev.png` | Передний слой adaptive icon: релиз / Dev |
 | `android-icon-monochrome.png` | Монохромный слой, белые чернила (система тонирует) |
-| `android-icon-background.png`, `android-icon-background-dev.png` | Заливка поля: `#dde2e8` (релиз) / `#0a0a0a` (Dev) |
+| `android-icon-background.png`, `android-icon-background-dev.png` | Заливка поля: `#f3f5f8` (релиз) / `#0a0a0a` (Dev) |
 | `splash-icon.png` | Splash |
 | `notification-icon.png` | Иконка уведомления |
 | `favicon.png` | Favicon веб-сборки Expo |
