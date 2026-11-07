@@ -2,6 +2,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useCallback, useState } from "react";
 import {
   MAX_MESSAGE_IMAGES,
+  isSupportedMessageImageAsset,
   messageImageAttachError,
   prepareMessageImageFromAsset,
   type MergeMessageImagesResult,
@@ -20,6 +21,15 @@ function newDraftId(): string {
 
 export function useMessageComposeImages() {
   const [images, setImages] = useState<DraftMessageImage[]>([]);
+  /**
+   * Сбой нативной подготовки (сжатие/перекодировка). Плитка при этом
+   * убирается из полосы, но пользователь узнаёт причину, а не тихую пропажу.
+   */
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+
+  const clearPrepareError = useCallback(() => {
+    setPrepareError(null);
+  }, []);
 
   const clearImages = useCallback(() => {
     setImages([]);
@@ -48,10 +58,18 @@ export function useMessageComposeImages() {
     let skippedInvalid = 0;
     let skippedLimit = 0;
     const nextDrafts: DraftMessageImage[] = [];
+    const prepareJobs: { id: string; asset: ImagePicker.ImagePickerAsset }[] = [];
 
     for (const asset of result.assets) {
       if (images.length + nextDrafts.length >= MAX_MESSAGE_IMAGES) {
         skippedLimit += 1;
+        continue;
+      }
+      // Не-изображения отсеиваем до плейсхолдера: иначе плитка появится и
+      // молча исчезнет после ошибки нативной подготовки. Неизвестный MIME
+      // (контент-провайдер, HEIC) пропускаем — подготовка перекодирует в JPEG.
+      if (!isSupportedMessageImageAsset(asset)) {
+        skippedInvalid += 1;
         continue;
       }
       const id = newDraftId();
@@ -62,26 +80,35 @@ export function useMessageComposeImages() {
         preparing: true,
       };
       nextDrafts.push(placeholder);
-      void prepareMessageImageFromAsset(asset)
-        .then((prepared) => {
-          setImages((current) =>
-            current.map((image) =>
-              image.id === id
-                ? { ...image, uri: prepared.uri, contentType: prepared.contentType, preparing: false }
-                : image,
-            ),
-          );
-        })
-        .catch(() => {
-          setImages((current) => current.filter((image) => image.id !== id));
-          skippedInvalid += 1;
-        });
+      prepareJobs.push({ id, asset });
       added += 1;
     }
 
     if (nextDrafts.length > 0) {
       setImages((prev) => [...prev, ...nextDrafts]);
     }
+
+    // Сжатие — по одному: нативная перекодировка крупных фото не должна
+    // конкурировать сама с собой (пик памяти и рывки JS-потока на релизе).
+    // Первый кадр с плейсхолдерами успевает отрисоваться до блока.
+    void (async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      for (const job of prepareJobs) {
+        try {
+          const prepared = await prepareMessageImageFromAsset(job.asset);
+          setImages((current) =>
+            current.map((image) =>
+              image.id === job.id
+                ? { ...image, uri: prepared.uri, contentType: prepared.contentType, preparing: false }
+                : image,
+            ),
+          );
+        } catch {
+          setImages((current) => current.filter((image) => image.id !== job.id));
+          setPrepareError("Не удалось подготовить фото. Попробуйте другое изображение.");
+        }
+      }
+    })();
 
     const mergeResult: MergeMessageImagesResult = { added, skippedInvalid, skippedLimit };
     return messageImageAttachError(mergeResult);
@@ -92,6 +119,8 @@ export function useMessageComposeImages() {
   return {
     images,
     hasPendingPrepare,
+    prepareError,
+    clearPrepareError,
     clearImages,
     removeImageAt,
     pickImages,

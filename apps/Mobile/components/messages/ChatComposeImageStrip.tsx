@@ -1,15 +1,24 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Image } from "expo-image";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { floraColors, floraSpacing, kegl, sPx } from "@/lib/theme";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
 
 type Props = {
   images: DraftMessageImage[];
   onRemoveAt: (index: number) => void;
+  /** Высота полосы: док вычитает её из высоты поля при калибровке baseline. */
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
-export function ChatComposeImageStrip({ images, onRemoveAt }: Props) {
+export function ChatComposeImageStrip({ images, onRemoveAt, onLayout }: Props) {
   if (images.length === 0) return null;
 
   return (
@@ -18,6 +27,7 @@ export function ChatComposeImageStrip({ images, onRemoveAt }: Props) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.strip}
       keyboardShouldPersistTaps="handled"
+      onLayout={onLayout}
     >
       {images.map((image, index) => (
         <View key={image.id} style={styles.item}>

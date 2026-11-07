@@ -11,19 +11,24 @@ import {
   chatPushIsOffEdge,
   chatPushPressBlockedByPlay,
   chatPushRepeatBackKeepsIntercept,
+  chatPushResetAllowed,
   chatPushSlideStartOnCarpet,
   chatPushSlideStartOnRelease,
   chatPushTabBarOffEdgeCommit,
+  chatPushThreadHost,
   chatBenchHostRaised,
   chatBenchPromoteKeepsReveal,
   chatBenchSlotTranslateX,
   chatWarmMountedIds,
   chatListHiddenUntilReveal,
+  chatListShouldMountSettled,
   chatThreadListRevealInput,
   layoutChatBenchSlots,
   nextChatListMounted,
   selectChatWarmMeasureIds,
+  shouldResetChatListMount,
   shouldRevealMeasuredWindow,
+  shouldRunChatPushEnter,
   warmLayoutEffectMayReveal,
   warmLayoutRevealAction,
 } from "@/lib/chatListEnterMount";
@@ -129,6 +134,60 @@ describe("warm layout effect", () => {
   });
 });
 
+describe("chat push enter run", () => {
+  const base = {
+    bench: false,
+    overlayHost: false,
+    holdingSlide: false,
+    slideHeld: false,
+    enterAlreadyRun: false,
+  };
+
+  it("starts the enter for a fresh full-screen route even after a previous park", () => {
+    expect(shouldRunChatPushEnter(base)).toBe(true);
+    expect(shouldRunChatPushEnter({ ...base, enterAlreadyRun: true })).toBe(true);
+    expect(shouldRunChatPushEnter({ ...base, bench: true })).toBe(false);
+    expect(shouldRunChatPushEnter({ ...base, holdingSlide: true })).toBe(false);
+    expect(shouldRunChatPushEnter({ ...base, slideHeld: true })).toBe(false);
+  });
+
+  it("does not replay the enter on an overlay: its park owns the slide", () => {
+    expect(shouldRunChatPushEnter({ ...base, overlayHost: true })).toBe(true);
+    expect(
+      shouldRunChatPushEnter({ ...base, overlayHost: true, enterAlreadyRun: true }),
+    ).toBe(false);
+  });
+});
+
+describe("chat push reset guard", () => {
+  const idle = {
+    exiting: false,
+    shellInStack: false,
+    threadRouteMounted: false,
+    phase: "idle" as const,
+    shellPushed: false,
+  };
+
+  it("allows reset only when no thread and no slide own the screen", () => {
+    expect(chatPushResetAllowed(idle)).toBe(true);
+    expect(chatPushResetAllowed({ ...idle, exiting: true })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, shellInStack: true })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, threadRouteMounted: true })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, phase: "parked" })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, phase: "play-wait" })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, phase: "playing" })).toBe(false);
+    expect(chatPushResetAllowed({ ...idle, phase: "playing", shellPushed: true })).toBe(true);
+    expect(
+      chatPushResetAllowed({
+        ...idle,
+        phase: "playing",
+        shellPushed: true,
+        threadRouteMounted: true,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("chat list mount", () => {
   const base = {
     parked: false,
@@ -154,6 +213,42 @@ describe("chat list mount", () => {
     );
     expect(nextChatListMounted({ ...base, enterProgress: 1 })).toBe(true);
     expect(nextChatListMounted(base)).toBe(false);
+  });
+
+  it("keeps the list mounted after the enter even if progress was reset", () => {
+    expect(
+      chatListShouldMountSettled({ holding: false, driven: true, progress: 0.4, mounted: false }),
+    ).toBe(false);
+    expect(
+      chatListShouldMountSettled({ holding: false, driven: true, progress: 1, mounted: false }),
+    ).toBe(true);
+    // Внешний reset обнулил progress под живым тредом: driven уже снят —
+    // лента обязана быть в дереве, иначе пузыри пропадают до переоткрытия.
+    expect(
+      chatListShouldMountSettled({ holding: false, driven: false, progress: 0, mounted: false }),
+    ).toBe(true);
+    expect(
+      chatListShouldMountSettled({ holding: true, driven: false, progress: 0, mounted: false }),
+    ).toBe(false);
+    expect(
+      chatListShouldMountSettled({ holding: false, driven: true, progress: 0, mounted: true }),
+    ).toBe(true);
+  });
+
+  it("does not reset the mount latch on a presented thread", () => {
+    const base = {
+      overlayHost: false,
+      listRevealed: false,
+      enterArmed: true,
+      holding: false,
+      sliding: false,
+    };
+    expect(shouldResetChatListMount(base)).toBe(true);
+    expect(shouldResetChatListMount({ ...base, overlayHost: true })).toBe(false);
+    expect(shouldResetChatListMount({ ...base, listRevealed: true })).toBe(false);
+    expect(shouldResetChatListMount({ ...base, holding: true })).toBe(false);
+    expect(shouldResetChatListMount({ ...base, sliding: true })).toBe(false);
+    expect(shouldResetChatListMount({ ...base, enterArmed: false })).toBe(false);
   });
 
   it("keeps an off-screen bench list opaque so cells and avatars can paint", () => {
@@ -796,6 +891,17 @@ describe("chat bench slot frame", () => {
         screenWidth: width,
       }),
     ).toBe(width);
+    // Маршрут треда уже в стеке: устаревший driven/progress не уводит сцену за край.
+    expect(
+      chatBenchSlotTranslateX({
+        measureFrame: false,
+        slideOwned: true,
+        slideDriven: true,
+        slideProgress: 0,
+        screenWidth: width,
+        surfacePinned: true,
+      }),
+    ).toBe(0);
     expect(
       chatBenchHostRaised({
         holding: true,
@@ -892,6 +998,43 @@ describe("chat bench slot frame", () => {
   it("does not reset reveal when a closed bench slot is promoted", () => {
     expect(chatBenchPromoteKeepsReveal(true)).toBe(true);
     expect(chatBenchPromoteKeepsReveal(false)).toBe(false);
+  });
+
+  it("keeps a live thread above the list even when progress was reset", () => {
+    // Возврат из системного пикера мог обнулить progress под живым тредом:
+    // offEdge тогда true, но маршрут треда ещё в стеке — чат обязан остаться
+    // текущей сценой и принимать тапы.
+    expect(
+      chatPushThreadHost({
+        threadOpen: true,
+        holding: false,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+      }),
+    ).toEqual({ raised: true, ignoreHits: false });
+  });
+
+  it("lets the exit animation own the host again once the thread is leaving", () => {
+    expect(
+      chatPushThreadHost({
+        threadOpen: false,
+        holding: false,
+        offEdge: true,
+        exiting: true,
+        enterPaint: false,
+      }),
+    ).toEqual({ raised: true, ignoreHits: true });
+    // За краем, без маршрута и без выхода — хост под списком, тапы его не касаются.
+    expect(
+      chatPushThreadHost({
+        threadOpen: false,
+        holding: false,
+        offEdge: true,
+        exiting: false,
+        enterPaint: false,
+      }),
+    ).toEqual({ raised: false, ignoreHits: true });
   });
 });
 

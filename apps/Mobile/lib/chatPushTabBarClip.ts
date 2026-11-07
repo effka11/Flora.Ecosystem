@@ -5,6 +5,22 @@
  * функции помечены worklet (UI-поток, без hop на JS).
  */
 
+/**
+ * Прогресс, по которому рисуется маска бара. Живой маршрут треда закрывает бар
+ * целиком: его пиксели не должны всплывать над полем ввода, даже если progress
+ * сбросили снаружи (возврат из системного пикера). Вне треда — как раньше,
+ * максимум chat/compose push (вход/выход ведёт progress).
+ */
+export function tabBarMaskProgress(args: {
+  threadOpen: boolean;
+  chatProgress: number;
+  composeProgress: number;
+}): number {
+  "worklet";
+  if (args.threadOpen) return 1;
+  return Math.max(args.chatProgress, args.composeProgress);
+}
+
 /** Видимая полоса бара в экранных координатах: [0, uncoveredWidthPx). */
 export function uncoveredWidthPx(progress: number, screenWidth: number): number {
   "worklet";

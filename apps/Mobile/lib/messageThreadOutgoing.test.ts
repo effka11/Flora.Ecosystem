@@ -1,4 +1,5 @@
 import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
+import type { FscpImageBlock } from "@flora/client-core/fscp";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -276,6 +277,50 @@ describe("optimistic pending merge", () => {
     const restored = messageThreadDecryptCache.getMessage(key);
     expect(restored?.text).toBe("keep");
     expect(restored?.sendStatus).toBe("sending");
+  });
+
+  it("keeps image blocks across optimistic replace and drops only the temp row", () => {
+    const tempImage: FscpImageBlock = {
+      kind: "image",
+      assetUuid: "asset-temp",
+      contentType: "image/jxl",
+      encryption: { algorithm: "aes-gcm", keyBase64Url: "k", nonceBase64Url: "n" },
+    };
+    insertOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: "me",
+      clientMessageKey: "temp-img",
+      blocks: [{ kind: "text", body: "фото" }, tempImage],
+    });
+
+    const realImage: FscpImageBlock = { ...tempImage, assetUuid: "asset-real" };
+    replaceOptimisticOutgoingThreadMessage({
+      queryClient,
+      conversationUuid,
+      otherUserUuid,
+      senderUserUuid: "me",
+      clientMessageKey: "temp-img",
+      sent: {
+        messageUuid: "real-img",
+        createdAt: "2026-07-25T12:00:00.000Z",
+        encryptedForMe: "fscp1:wire",
+      },
+      wire: "fscp1:wire",
+      blocks: [{ kind: "text", body: "фото" }, realImage],
+    });
+
+    const cached = messageThreadDecryptCache.getMessage("real-img|fscp1:wire");
+    expect(cached?.imageBlocks.map((block) => block.assetUuid)).toEqual(["asset-real"]);
+    expect(cached?.text).toBe("фото");
+    expect(mergePendingOutgoingIntoMessages(conversationUuid, [])).toEqual([]);
+    const data = queryClient.getQueryData<{ items: MsgMessageDto[] }>([
+      "messages",
+      conversationUuid,
+      otherUserUuid,
+    ]);
+    expect(data?.items.map((row) => row.messageUuid)).toEqual(["real-img"]);
   });
 
   it("remove drops temp from pending and query data", () => {

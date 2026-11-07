@@ -102,7 +102,7 @@ import { messageDecryptCacheKey } from "@/lib/useThreadMessageDecrypt";
 import { PagerOverlayScroll } from "@/lib/pagerFlashListScroll";
 import { openGroupChat } from "@/lib/openGroupChat";
 import { useMessagesListPreviewDecrypt } from "@/lib/useMessagesListPreviewDecrypt";
-import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
+
 import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors, floraSpacing, floraTabBarContentPadding, kegl, sPx, tracking } from "@/lib/theme";
 import { usePullToRefresh } from "@/lib/usePullToRefresh";
@@ -789,9 +789,12 @@ export default function MessagesScreen() {
       setTabFocused(true);
       setConversationsListFocused(true);
       // Страховка push-перехода: exit уже отыграл к моменту фокуса,
-      // сброс чинит аварийные пути (pop без анимации).
-      resetChatPushProgress();
-      applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
+      // сброс чинит аварийные пути (pop без анимации). Пока в стеке есть
+      // маршрут треда — сброс запрещён даже в окне между shellPushed
+      // и маунтом оболочки: release парковки оставил бы прозрачный modal
+      // поверх списка и уронил бы поле ввода в список.
+      const stackRoutes = navigation.getState()?.routes;
+      if ((stackRoutes?.length ?? 1) <= 1) resetChatPushProgress();
       // Сборка окон — гейт включает её следующим кадром, не вместе с сетевым
       // добором свежести; скролл списка он читает сам (см. ниже).
       setChatWarmScreenFocused(warmGateOwner, true);
@@ -829,7 +832,6 @@ export default function MessagesScreen() {
       navigation,
       refreshOverlay,
       retryPendingOperation,
-      tabBarBottomInset,
       warmGateOwner,
     ]),
   );

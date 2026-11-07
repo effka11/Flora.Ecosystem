@@ -26,7 +26,30 @@ export async function uploadMultipartFile(params: {
   fieldName?: string;
   mimeType?: string;
   parameters?: Record<string, string>;
+  /** 0/undefined — без таймаута. Для сообщений — чтобы «отправка» не висела вечно. */
+  timeoutMs?: number;
 }): Promise<unknown> {
+  const attempt = () => {
+    const request = uploadOnce();
+    const timeoutMs = params.timeoutMs ?? 0;
+    if (timeoutMs <= 0) return request;
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Сервер не ответил на загрузку файла. Попробуйте ещё раз.")),
+        timeoutMs,
+      );
+      request.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  };
   const uploadOnce = async () => {
     const { session, clientIdentity } = getApiClientConfig();
     const token = await session.getAccessToken();
@@ -58,12 +81,12 @@ export async function uploadMultipartFile(params: {
   };
 
   try {
-    return await uploadOnce();
+    return await attempt();
   } catch (err) {
     if (!(err instanceof ApiRequestError) || err.status !== 401) throw err;
     if (!(await refreshSessionIfPossible())) {
       await rejectUploadUnauthorized(401, err.message);
     }
-    return await uploadOnce();
+    return await attempt();
   }
 }
