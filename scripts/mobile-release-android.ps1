@@ -323,6 +323,8 @@ try {
     node ../../scripts/ensure-ffmpeg-android-aar.mjs
 
     $legacyAndroid = Join-Path $mobile "android"
+    # Serialized with the dev scripts: both rewrite apps/Mobile/android.
+    Enter-FloraAndroidWorkspaceLock $mobile
     Stop-AndroidGradleDaemons $legacyAndroid
 
     $androidGenDir = Invoke-ExpoAndroidPrebuild $mobile $nativeBuildMode
@@ -343,6 +345,7 @@ try {
         Invoke-ReleaseGradlePropertiesPatch -AndroidDir $androidGenDir
     }
 
+    Assert-FloraAndroidReleaseProject $androidDir
     Invoke-GradleRelease $androidDir
 
     $apk = Get-ChildItem -Recurse -Filter "app-release.apk" (Join-Path $androidDir "app\build\outputs\apk\release") -ErrorAction SilentlyContinue |
@@ -429,6 +432,7 @@ try {
 }
 finally {
     Pop-Location
+    Exit-FloraAndroidWorkspaceLock
 }
 
 if ($PublishChannel) {
