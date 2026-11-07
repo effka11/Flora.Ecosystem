@@ -48,6 +48,9 @@ export type MessageImageUploadTarget =
   | { kind: "dm"; toUserUuid: string }
   | { kind: "group"; conversationUuid: string };
 
+/** 5 МБ с телефона даже на слабом канале уходят за секунды; 60 с — аварийный порог. */
+const IMAGE_UPLOAD_TIMEOUT_MS = 60_000;
+
 async function postEncryptedImageForm(params: {
   target: MessageImageUploadTarget;
   file: File;
@@ -59,6 +62,7 @@ async function postEncryptedImageForm(params: {
           path: `/api/messaging/groups/${encodeURIComponent(params.target.conversationUuid.trim())}/image-assets`,
           file: params.file,
           parameters: { contentType: params.contentType },
+          timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS,
         })
       : await uploadMultipartFile({
           path: "/api/messaging/image-assets",
@@ -67,6 +71,7 @@ async function postEncryptedImageForm(params: {
             toUserUuid: params.target.toUserUuid,
             contentType: params.contentType,
           },
+          timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS,
         });
   return parseUploadedImage(raw, params.contentType);
 }

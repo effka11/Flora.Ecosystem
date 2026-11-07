@@ -113,6 +113,91 @@ export function nextChatListMounted(args: {
 }
 
 /**
+ * Снимать ли защёлку ленты перед новым входом. На уже открытом треде
+ * (overlay-парковка, показанная лента, идущий слайд) сброс недопустим:
+ * FlashList размонтируется, и пузыри пропадают до переоткрытия чата.
+ */
+export function shouldResetChatListMount(args: {
+  overlayHost: boolean;
+  listRevealed: boolean;
+  enterArmed: boolean;
+  holding: boolean;
+  sliding: boolean;
+}): boolean {
+  return (
+    !args.overlayHost &&
+    !args.listRevealed &&
+    args.enterArmed &&
+    !args.holding &&
+    !args.sliding
+  );
+}
+
+/**
+ * Монтировать ли ленту, когда вход уже не ведёт её (driven снят).
+ * Пока `driven` — идёт слайд: ленту начинаем на progress = 1. После входа
+ * `driven` false, и лента обязана быть в дереве независимо от progress:
+ * внешний reset мог обнулить его под живым тредом, и это не повод оставить
+ * чат без пузырей до переоткрытия.
+ */
+export function chatListShouldMountSettled(args: {
+  holding: boolean;
+  driven: boolean;
+  progress: number;
+  mounted: boolean;
+}): boolean {
+  if (args.mounted) return true;
+  if (args.holding) return false;
+  if (args.driven) return args.progress >= 1;
+  return true;
+}
+
+/**
+ * Звать ли runEnter из layout-эффекта экрана треда.
+ *
+ * Эпоха входа глобальна и остаётся «уже отыгранной» после любого прошлого
+ * треда. Для полноэкранного маршрута она не должна глушить первый вход:
+ * chatPushDriven взведён, progress = 0 — экран стоит за правым краем, а его
+ * полноэкранная рамка ест тапы списка («чат пропал»). runEnter со снятым
+ * взводом — безопасный снимок progress = 1. Оверлею повтор по-прежнему
+ * запрещён: его вход ведёт парковка.
+ */
+export function shouldRunChatPushEnter(args: {
+  bench: boolean;
+  overlayHost: boolean;
+  holdingSlide: boolean;
+  slideHeld: boolean;
+  enterAlreadyRun: boolean;
+}): boolean {
+  if (args.bench) return false;
+  if (args.holdingSlide || args.slideHeld) return false;
+  if (args.overlayHost && args.enterAlreadyRun) return false;
+  return true;
+}
+
+/**
+ * Можно ли безопасно сбросить chat-push (focus списка как страховка).
+ * Пока тред открыт — нельзя: reset обнуляет слайд под открытой оболочкой,
+ * оболочка pop-ается, а парковка остаётся поверх списка и глушит тапы.
+ * `threadRouteMounted` — экран треда в стеке в любом виде (оболочка парковки
+ * или полный экран без неё): пока он смонтирован, reset обнулил бы progress
+ * под живым экраном.
+ */
+export function chatPushResetAllowed(args: {
+  exiting: boolean;
+  shellInStack: boolean;
+  threadRouteMounted: boolean;
+  phase: ChatPushShellPhase;
+  shellPushed: boolean;
+}): boolean {
+  if (args.exiting) return false;
+  if (args.shellInStack || args.threadRouteMounted) return false;
+  if (args.phase === "parked" || args.phase === "play-wait") return false;
+  if (args.phase === "playing" && !args.shellPushed) return false;
+  return true;
+}
+
+/**
  * Прятать ленту до показа. Оверлей за краем (скамья и палец) прятать нельзя:
  * opacity 0 не даёт ячейкам снять onLayout и expo-image — bitmap. Ковёр и
  * translate за край держат кадр невидимым, пока высоты и круги не готовы.
@@ -381,6 +466,32 @@ export function chatBenchHostRaised(args: {
 }
 
 /**
+ * Поза и хиты хоста оверлея с учётом живого маршрута треда.
+ *
+ * Пока маршрут треда в стеке и выход не идёт, чат — текущая сцена: его
+ * поверхность обязана быть над списком и принимать тапы, даже если progress
+ * сбросился снаружи (возврат из системного пикера). Иначе `offEdge` опускает
+ * хост под список и гасит хиты — видимый чат остаётся без пузырей и без поля.
+ * На входе маршрут пушится уже на progress = 1, на выходе `exiting` снимает
+ * флаг — анимация слайда по-прежнему рисуется по progress.
+ */
+export function chatPushThreadHost(args: {
+  threadOpen: boolean;
+  holding: boolean;
+  offEdge: boolean;
+  exiting: boolean;
+  enterPaint: boolean;
+  carpetDown?: boolean;
+}): { raised: boolean; ignoreHits: boolean } {
+  if (args.threadOpen) return { raised: true, ignoreHits: false };
+  const raised = chatBenchHostRaised(args);
+  return {
+    raised,
+    ignoreHits: !raised || chatPushHostIgnoresHits(args),
+  };
+}
+
+/**
  * Первое отпускание прогретого чата. Публикация фазы — до withTiming, слот
  * ещё за правым краем; тайминг — следующий кадр. На `completeParkedEnter`
  * эту публикацию не переносить: слот остаётся в hold и runEnter с этого
@@ -486,6 +597,8 @@ export function layoutChatBenchSlots(args: {
 /**
  * `null` — нет translateX, слот в окне. Закрытый слот и активный до runEnter
  * (`slideProgress` 0 при driven) — `screenWidth`. Слайд читает progress.
+ * `surfacePinned` — маршрут треда уже в стеке и выход не идёт: экран — текущая
+ * сцена, устаревший driven/progress не имеет права увести его за край.
  */
 export function chatBenchSlotTranslateX(args: {
   measureFrame: boolean;
@@ -493,8 +606,10 @@ export function chatBenchSlotTranslateX(args: {
   slideDriven: boolean;
   slideProgress: number;
   screenWidth: number;
+  surfacePinned?: boolean;
 }): number | null {
   "worklet";
+  if (args.surfacePinned === true) return 0;
   if (args.measureFrame && !args.slideOwned) return null;
   if (!args.slideOwned) return args.screenWidth;
   if (!args.slideDriven) return 0;
