@@ -15,6 +15,11 @@ export type MsgConversationDto = {
   lastMessageContent: string | null;
   lastMessageAt: string;
   lastMessageIsFromMe: boolean;
+  /**
+   * Прочитано ли последнее сообщение его получателем — тот же `is_read`, что
+   * отдают галочки в пузыре. Для входящего это «прочитано мной».
+   */
+  lastMessageIsRead: boolean;
   unreadCount: number;
   otherUserIsOnline: boolean;
   otherUserLastSeenAt: string | null;
@@ -66,6 +71,7 @@ function parseConversation(raw: unknown, ctx?: ParseContext): MsgConversationDto
     lastMessageContent: readStr(o, ["lastMessageContent", "LastMessageContent"], fb) || null,
     lastMessageAt: readStr(o, ["lastMessageAt", "LastMessageAt"], fb),
     lastMessageIsFromMe: readBool(o, ["lastMessageIsFromMe", "LastMessageIsFromMe"], fb),
+    lastMessageIsRead: readBool(o, ["lastMessageIsRead", "LastMessageIsRead"], fb),
     unreadCount: readNum(o, ["unreadCount", "UnreadCount"], fb) ?? 0,
     otherUserIsOnline: readBool(o, ["otherUserIsOnline", "OtherUserIsOnline"], fb),
     otherUserLastSeenAt: readStr(o, ["otherUserLastSeenAt", "OtherUserLastSeenAt"], fb) || null,

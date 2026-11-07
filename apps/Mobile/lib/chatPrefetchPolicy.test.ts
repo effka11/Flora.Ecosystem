@@ -27,6 +27,7 @@ function conversation(overrides: Partial<MsgConversationDto> = {}): MsgConversat
     lastMessageContent: null,
     lastMessageAt: "2026-08-24T10:00:00Z",
     lastMessageIsFromMe: false,
+    lastMessageIsRead: false,
     unreadCount: 0,
     otherUserIsOnline: false,
     otherUserLastSeenAt: null,

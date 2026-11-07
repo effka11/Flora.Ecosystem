@@ -153,6 +153,9 @@ pub struct ConversationPeerRow {
     pub last_content: Option<String>,
     pub last_message_at: DateTime<Utc>,
     pub last_is_from_me: bool,
+    /// `user_messages.is_read` последнего сообщения — тот же флаг, что отдаёт
+    /// тредированный GET messages; для исходящего значит «прочитано получателем».
+    pub last_is_read: bool,
     pub unread_count: i32,
 }
 
@@ -169,6 +172,10 @@ pub struct ConversationListItemDto {
     pub last_message_content: Option<String>,
     pub last_message_at: String,
     pub last_message_is_from_me: bool,
+    /// Прочитано ли последнее сообщение его получателем (аддитивное поле):
+    /// для исходящего — прочитано собеседником, как в галочках пузыря.
+    #[serde(default)]
+    pub last_message_is_read: bool,
     pub unread_count: i32,
     pub other_user_is_online: bool,
     pub other_user_last_seen_at: Option<String>,
