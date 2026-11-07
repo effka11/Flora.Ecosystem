@@ -1,12 +1,18 @@
-import type { MsgConversationDto, MsgMessageDto } from "@flora/client-core/contracts";
+import type {
+  MsgConversationDto,
+  MsgConversationsPage,
+  MsgMessageDto,
+} from "@flora/client-core/contracts";
 import type { FscpImageBlock } from "@flora/client-core/fscp";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyIncomingToConversations,
+  applyMessagesPageToCaches,
   applyOutgoingToConversations,
   clearPendingOutgoing,
   insertOptimisticOutgoingThreadMessage,
+  markConversationLastMessageReadInList,
   mergePendingOutgoingIntoMessages,
   removeOptimisticOutgoingThreadMessage,
   replaceOptimisticOutgoingThreadMessage,
@@ -27,6 +33,7 @@ function conversation(conversationUuid: string): MsgConversationDto {
     lastMessageContent: `old content ${conversationUuid}`,
     lastMessageAt: "2026-07-24T12:00:00.000Z",
     lastMessageIsFromMe: false,
+    lastMessageIsRead: false,
     unreadCount: 3,
     otherUserIsOnline: false,
     otherUserLastSeenAt: "2026-07-24T11:00:00.000Z",
@@ -66,6 +73,7 @@ describe("applyOutgoingToConversations", () => {
       lastMessageContent: null,
       lastMessageAt: patch.createdAt,
       lastMessageIsFromMe: true,
+      lastMessageIsRead: false,
       otherUsername: "peer",
       otherDisplayName: "Peer Name",
       otherAvatarUuid: "avatar-peer",
@@ -347,5 +355,141 @@ describe("optimistic pending merge", () => {
       otherUserUuid,
     ]);
     expect(data?.items ?? []).toEqual([]);
+  });
+});
+
+describe("chat list read receipt mirror", () => {
+  const conversationUuid = "conv-read";
+  let queryClient: QueryClient;
+
+  function seedList(items: MsgConversationDto[]): void {
+    queryClient.setQueryData(["conversations"], { items, nextCursor: null });
+  }
+
+  function listRow(): MsgConversationDto | undefined {
+    return queryClient.getQueryData<MsgConversationsPage>(["conversations"])?.items[0];
+  }
+
+  beforeEach(() => {
+    queryClient = new QueryClient();
+    clearPendingOutgoing(conversationUuid);
+    messageThreadCache.clear();
+  });
+
+  it("marks an own last message read for a live read signal", () => {
+    seedList([{ ...conversation(conversationUuid), lastMessageIsFromMe: true }]);
+
+    markConversationLastMessageReadInList(queryClient, conversationUuid);
+
+    expect(listRow()?.lastMessageIsRead).toBe(true);
+  });
+
+  it("keeps an incoming last message untouched", () => {
+    seedList([{ ...conversation(conversationUuid), lastMessageIsFromMe: false }]);
+
+    markConversationLastMessageReadInList(queryClient, conversationUuid);
+
+    expect(listRow()?.lastMessageIsRead).toBe(false);
+  });
+
+  it("mirrors newest message isRead from a fresh thread page", () => {
+    const createdAt = "2026-07-25T12:00:00.000Z";
+    seedList([
+      {
+        ...conversation(conversationUuid),
+        lastMessageAt: createdAt,
+        lastMessageIsFromMe: true,
+        lastMessageIsRead: false,
+      },
+    ]);
+
+    applyMessagesPageToCaches({
+      queryClient,
+      conversationUuid,
+      otherUserUuid: "peer-read",
+      page: {
+        items: [
+          {
+            messageUuid: "m-read",
+            conversationUuid,
+            senderUserUuid: "me",
+            encryptedPayload: "fscp1:wire",
+            createdAt,
+            isFromMe: true,
+            isRead: true,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+
+    expect(listRow()?.lastMessageIsRead).toBe(true);
+  });
+
+  it("does not mirror a page for a different last message", () => {
+    seedList([
+      {
+        ...conversation(conversationUuid),
+        lastMessageAt: "2026-07-25T13:00:00.000Z",
+        lastMessageIsFromMe: true,
+        lastMessageIsRead: false,
+      },
+    ]);
+
+    applyMessagesPageToCaches({
+      queryClient,
+      conversationUuid,
+      otherUserUuid: "peer-read",
+      page: {
+        items: [
+          {
+            messageUuid: "m-old",
+            conversationUuid,
+            senderUserUuid: "me",
+            encryptedPayload: "fscp1:wire",
+            createdAt: "2026-07-25T12:00:00.000Z",
+            isFromMe: true,
+            isRead: true,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+
+    expect(listRow()?.lastMessageIsRead).toBe(false);
+  });
+
+  it("does not downgrade a known read from a stale page", () => {
+    const createdAt = "2026-07-25T12:00:00.000Z";
+    seedList([
+      {
+        ...conversation(conversationUuid),
+        lastMessageAt: createdAt,
+        lastMessageIsFromMe: true,
+        lastMessageIsRead: true,
+      },
+    ]);
+
+    applyMessagesPageToCaches({
+      queryClient,
+      conversationUuid,
+      otherUserUuid: "peer-read",
+      page: {
+        items: [
+          {
+            messageUuid: "m-stale",
+            conversationUuid,
+            senderUserUuid: "me",
+            encryptedPayload: "fscp1:wire",
+            createdAt,
+            isFromMe: true,
+            isRead: false,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+
+    expect(listRow()?.lastMessageIsRead).toBe(true);
   });
 });

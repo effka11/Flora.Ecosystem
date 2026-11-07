@@ -201,6 +201,7 @@ impl ConversationService {
                     last_message_content: peer.last_content.clone(),
                     last_message_at: format_utc(peer.last_message_at),
                     last_message_is_from_me: peer.last_is_from_me,
+                    last_message_is_read: peer.last_is_read,
                     unread_count: peer.unread_count,
                     other_user_is_online,
                     other_user_last_seen_at,
@@ -854,6 +855,7 @@ mod tests {
                 last_message_content: None,
                 last_message_at: "2026-08-18T12:00:00.000Z".into(),
                 last_message_is_from_me: false,
+                last_message_is_read: false,
                 unread_count: 0,
                 other_user_is_online: false,
                 other_user_last_seen_at: None,
@@ -869,6 +871,7 @@ mod tests {
         assert_eq!(json["otherAccountBlocked"], serde_json::json!(true));
         assert_eq!(json["otherUsername"], serde_json::json!("bob"));
         assert!(json["otherAvatarUuid"].is_null());
+        assert_eq!(json["lastMessageIsRead"], serde_json::json!(false));
 
         let json = serde_json::to_value(item(false)).expect("json");
         assert_eq!(json["otherAccountBlocked"], serde_json::json!(false));

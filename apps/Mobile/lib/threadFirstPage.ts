@@ -12,6 +12,7 @@
  */
 import { apiGetGroupMessages, apiGetMessages } from "@flora/client-core/api";
 import { groupApiMessagesToThread } from "@/lib/groupChatMap";
+import { getQueryClientRef } from "@/lib/queryClientRef";
 import {
   applyMessagesPageToCaches,
   type MessagesQueryData,
@@ -47,9 +48,11 @@ export async function fetchThreadFirstPage(
     undefined,
     target.otherUserUuid.trim() || undefined,
   );
+  // queryClient — чтобы страница сразу зеркалила `lastMessageIsRead` в строку списка.
   return applyMessagesPageToCaches({
     conversationUuid: target.conversationUuid,
     otherUserUuid: target.otherUserUuid,
+    queryClient: getQueryClientRef() ?? undefined,
     page,
   });
 }
