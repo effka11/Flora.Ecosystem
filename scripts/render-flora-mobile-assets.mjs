@@ -8,13 +8,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
+/** Brand monochrome pair — documents/design/color-reference.md. */
+const BRAND_BLACK = "#0a0a0a";
+const BRAND_SILVER = "#dde2e8";
+/** Light-theme canvas (Cold Paper) — documents/design/color-reference.md. */
+const LIGHT_PAPER = "#f3f5f8";
 /** App canvas behind splash and the system bars. */
-const FLORA_BG = "#0c0c0c";
+const FLORA_BG = BRAND_BLACK;
 /** Plate baked into flora-logo-v1.svg. plantCoverage measures the plant against this field. */
-const LOGO_BG = "#0a0a0a";
-/** Launcher icon field. Brand greenDark, not the logo plate. */
-const ICON_BG = "#2c3527";
+const LOGO_BG = BRAND_BLACK;
 const LOGO_GREEN = "#a1cd87";
+/**
+ * Launcher polarity follows the app themes: Dev is the dark canvas with
+ * silver ink, release the light canvas with black ink.
+ */
+const ICON_DARK = { plate: BRAND_BLACK, ink: BRAND_SILVER };
+const ICON_LIGHT = { plate: LIGHT_PAPER, ink: BRAND_BLACK };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "apps", "Mobile");
@@ -49,7 +58,7 @@ function plantCoverage(r, g, b) {
 }
 
 /**
- * Plant only, same placement as the logo. `color` recolors the ink (white
+ * Plant only, same placement as the logo. `color` recolors the ink (brand
  * monochrome / notification); omitted keeps #a1cd87.
  */
 async function renderMark(size, color) {
@@ -93,7 +102,7 @@ async function solidPng(outPath, size, hex) {
 }
 
 async function splashPng(outPath, size) {
-  const mark = await renderMark(size);
+  const mark = await renderMark(size, BRAND_SILVER);
   const { r, g, b } = hexRgb(FLORA_BG);
   await sharp({
     create: { width: size, height: size, channels: 4, background: { r, g, b, alpha: 255 } },
@@ -199,7 +208,7 @@ async function syncAndroidGenRes() {
     if (!existsSync(dir)) continue;
     await sharp(fgSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_foreground.webp"));
     await sharp(monoSource).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toFile(join(dir, "ic_launcher_monochrome.webp"));
-    await solidWebp(join(dir, "ic_launcher_background.webp"), size, ICON_BG);
+    await solidWebp(join(dir, "ic_launcher_background.webp"), size, ICON_LIGHT.plate);
   }
 
   // Always overwrite tray icons — release may skip expo prebuild when splash/version are fresh.
@@ -212,19 +221,31 @@ async function syncAndroidGenRes() {
       .toFile(join(dir, "notification_icon.png"));
   }
 
-  await syncLauncherIconBackground(resRoot);
+  await syncGeneratedColors(resRoot);
   console.log("Synced Flora splash/icons into apps/Mobile/android_gen/");
 }
 
-/** Expo prebuild writes this once; a fresh android_gen skips prebuild, so keep the color here. */
-async function syncLauncherIconBackground(resRoot) {
+/**
+ * Expo prebuild writes these once; a fresh prebuild skips it, so keep the colors
+ * here. The package name decides polarity: the Dev client gets the dark plate,
+ * release prebuilds the light one.
+ */
+async function syncGeneratedColors(resRoot) {
   const colorsPath = join(resRoot, "values", "colors.xml");
   if (!existsSync(colorsPath)) return;
+  const gradlePath = join(resRoot, "..", "..", "..", "build.gradle");
+  const gradle = existsSync(gradlePath) ? await readFile(gradlePath, "utf8") : "";
+  const plate = /social\.flora\.mobile\.dev/.test(gradle) ? ICON_DARK.plate : ICON_LIGHT.plate;
   const xml = await readFile(colorsPath, "utf8");
-  const next = xml.replace(
-    /(<color name="iconBackground">)#[0-9A-Fa-f]{3,8}(<\/color>)/,
-    `$1${ICON_BG}$2`,
-  );
+  const next = xml
+    .replace(
+      /(<color name="iconBackground">)#[0-9A-Fa-f]{3,8}(<\/color>)/,
+      `$1${plate}$2`,
+    )
+    .replace(
+      /(<color name="splashscreen_background">)#[0-9A-Fa-f]{3,8}(<\/color>)/,
+      `$1${FLORA_BG}$2`,
+    );
   if (next !== xml) await writeFile(colorsPath, next);
 }
 
@@ -285,9 +306,9 @@ async function renderScaledMark(size, color) {
   return sharp(canvas).resize(size, size, { fit: "fill" }).png().toBuffer();
 }
 
-async function renderAppIcon(size) {
-  const mark = await renderScaledMark(size);
-  const { r, g, b } = hexRgb(ICON_BG);
+async function renderAppIcon(size, { plate, ink }) {
+  const mark = await renderScaledMark(size, ink);
+  const { r, g, b } = hexRgb(plate);
   return sharp({
     create: { width: size, height: size, channels: 4, background: { r, g, b, alpha: 255 } },
   })
@@ -303,14 +324,14 @@ async function writePng(outPath, buffer) {
 async function main() {
   await mkdir(images, { recursive: true });
 
-  const appIcon = await renderAppIcon(1024);
-  await writePng(join(images, "icon.png"), appIcon);
-  await writePng(join(images, "icon-dev.png"), appIcon);
-  await writePng(join(images, "android-icon-foreground.png"), await renderScaledMark(1024));
+  await writePng(join(images, "icon.png"), await renderAppIcon(1024, ICON_LIGHT));
+  await writePng(join(images, "icon-dev.png"), await renderAppIcon(1024, ICON_DARK));
+  await writePng(join(images, "android-icon-foreground.png"), await renderScaledMark(1024, ICON_LIGHT.ink));
+  await writePng(join(images, "android-icon-foreground-dev.png"), await renderScaledMark(1024, ICON_DARK.ink));
   await writePng(join(images, "android-icon-monochrome.png"), await renderScaledMark(1024, "#ffffff"));
   await notificationIconPng(join(images, "notification-icon.png"), 192);
-  await solidPng(join(images, "android-icon-background.png"), 1024, ICON_BG);
-  await solidPng(join(images, "android-icon-background-dev.png"), 1024, ICON_BG);
+  await solidPng(join(images, "android-icon-background.png"), 1024, ICON_LIGHT.plate);
+  await solidPng(join(images, "android-icon-background-dev.png"), 1024, ICON_DARK.plate);
   await splashPng(join(images, "splash-icon.png"), 1024);
   await splashPng(join(images, "favicon.png"), 48);
 
@@ -332,7 +353,7 @@ async function main() {
   await writePng(join(webApp, "apple-icon.png"), apple);
 
   await syncAndroidGenRes();
-  await syncLauncherIconBackground(join(mobile, "android", "app", "src", "main", "res"));
+  await syncGeneratedColors(join(mobile, "android", "app", "src", "main", "res"));
 
   console.log("Flora logo rendered for Mobile assets and Web tab icons.");
 }
