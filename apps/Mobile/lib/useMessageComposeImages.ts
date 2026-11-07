@@ -39,6 +39,20 @@ export function useMessageComposeImages() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  /**
+   * Возврат вложений после сбоя отправки: полоса очищается сразу на «Отправить»,
+   * а неудачный сетевой путь возвращает снимок, чтобы фото не пропали молча.
+   * Возвращённые плитки встают перед уже выбранными новыми и ужимаются в лимит.
+   */
+  const restoreImages = useCallback((drafts: readonly DraftMessageImage[]) => {
+    if (drafts.length === 0) return;
+    setImages((prev) => {
+      const room = MAX_MESSAGE_IMAGES - prev.length;
+      if (room <= 0) return prev;
+      return [...drafts.slice(0, room), ...prev];
+    });
+  }, []);
+
   const pickImages = useCallback(async (): Promise<string | null> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return "Нужен доступ к галерее.";
@@ -122,6 +136,7 @@ export function useMessageComposeImages() {
     prepareError,
     clearPrepareError,
     clearImages,
+    restoreImages,
     removeImageAt,
     pickImages,
   };
