@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Dimensions, Keyboard, Platform, type ViewStyle } from "react-native";
+import { AppState, Dimensions, Keyboard, Platform, type ViewStyle } from "react-native";
 import {
   KeyboardController,
   KeyboardEvents,
@@ -26,6 +26,8 @@ import {
 } from "react-native-reanimated";
 import { canScrollChatList } from "@/lib/chatListEnterMount";
 import { noteChatOpenRevealPath } from "@/lib/chatOpenTrace";
+import { type ComposeShellMetrics } from "@/lib/composeShellMetrics";
+import { keyboardHeightForDock, reconciledKeyboardGeometry } from "@/lib/keyboardGeometry";
 import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
 import {
   commitImeHeightPx,
@@ -87,6 +89,11 @@ const KB_PROGRESS_SETTLED = 0.999;
 const PANEL_OPEN_MS = Platform.OS === "ios" ? 250 : 220;
 const PANEL_CLOSE_MS = 200;
 const PANEL_RELEASE_MS = 160;
+/**
+ * Пауза после activity-return перед сверкой IME с нативным состоянием:
+ * системная анимация клавиатуры успевает осесть, сверка не дёргает док.
+ */
+const IME_RECONCILE_RESUME_MS = 320;
 const PANEL_EASING = ReanimatedEasing.out(ReanimatedEasing.cubic);
 /**
  * Пауза перед показом заглушки: короткое ожидание не должно успевать
@@ -115,6 +122,12 @@ let lastMeasuredComposeBaselinePx = mmkv.getNumber(COMPOSE_BASELINE_MMKV_KEY) ??
 
 /** Окно дев-трассировки осадки после reveal. */
 const SETTLE_TRACE_WINDOW_MS = 2000;
+/**
+ * Расхождение однострочного baseline, ниже которого это округление пикселей,
+ * а не смена инсета/шрифта. Больше — принимаем новый замер (лечит в т.ч.
+ * отравленный старой версией кэш MMKV).
+ */
+const COMPOSE_BASELINE_EPSILON_PX = 2;
 /** Потолок строк лога осадки на один показ (не заспамить консоль анимацией). */
 const SETTLE_TRACE_MAX_LOGS = 12;
 
@@ -294,8 +307,8 @@ export type ChatComposeDock = {
    * React-коммит грида не должен попадать в кадры transform-анимации.
    */
   emojiPanelReady: boolean;
-  /** Высота оболочки поля: измерение покоя либо цель роста на новую строку. */
-  onComposeShellLayout: (height: number) => void;
+  /** Метрики оболочки поля: полная высота, полоса вложений и baseline. */
+  onComposeShellLayout: (metrics: ComposeShellMetrics) => void;
   /**
    * Остаток хода до ступени зазора. Пишет поле (ChatComposeField) — у роста
    * pill и у догона ленты обязана быть одна кривая и один кадр.
@@ -303,7 +316,6 @@ export type ChatComposeDock = {
   composeGrowthHoldSv: SharedValue<number>;
   onDockColumnIdleLayout: (height: number) => void;
   setDeleteBarHeightPx: (height: number) => void;
-  recalibrateComposeBaseline: () => void;
   emojiPanelMounted: boolean;
   emojiAccessoryActive: boolean;
   keyboardOpen: boolean;
@@ -317,7 +329,14 @@ export type ChatComposeDock = {
    * возможно устаревшему prop — быстрые тапы не двоят одно действие.
    */
   toggleEmoji: (showInput: () => void) => void;
+  /** Погасить IME и снять режим клавиатуры; геометрию ведут события. */
   dismissKeyboard: () => void;
+  /**
+   * Вернуть док в idle без ожидания событий клавиатуры. Для возврата из
+   * системного пикера: там IME уже погашен, а провайдер может не доставить
+   * финальный move — без снятия подъёма док остаётся ниже своего места.
+   */
+  settleKeyboardIdle: () => void;
   resetDock: () => void;
 };
 
@@ -385,6 +404,12 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const emojiActiveRef = useRef(false);
   const emojiPanelMountedRef = useRef(false);
   const composeBaselineRef = useRef(lastMeasuredComposeBaselinePx);
+  /**
+   * Высота полосы вложений (фото) над полем. `null` — вложений нет.
+   * Полоса — часть оболочки, но не часть однострочного поля: из неё нельзя
+   * калибровать baseline, иначе док и зазор ленты запомнят разовую высоту.
+   */
+  const composeMediaHeightRef = useRef<number | null>(null);
   /** Отложенный старт холодного открытия: анимацию запускаем ПОСЛЕ коммита слоя. */
   const pendingColdOpenTargetRef = useRef<number | null>(null);
   /** Таймер страховки готовности контента панели. */
@@ -397,6 +422,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const showInputRef = useRef<(() => void) | null>(null);
   /** Вотчдог показа IME (нет событий клавиатуры вообще). */
   const kbShowWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Отложенная сверка IME после activity-return (пикер, камера). */
+  const imeResumeReconcileRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Кадр первой (быстрой) сверки после activity-return. */
+  const imeResumeFrameRef = useRef<number | null>(null);
 
   // --- Лента: состояние для единственного писателя скролла ---
 
@@ -664,11 +693,11 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * прозрачность живёт в доке и осталась бы от прежнего треда.
    */
   const hideListUntilReady = useCallback(() => {
-    if (__DEV__ && listRevealStartedSv.value) {
-      // Смок-сигнал «мигания»: hide прервал уже запущенный (или показанный)
-      // цикл показа. Легитимно только на реальной смене треда.
+    if (__DEV__) {
+      // Смок-сигнал сброса показа: reveal-started=1 — hide прервал уже
+      // запущенный (или показанный) цикл; 0 — новый тред/ремоунт экрана.
       console.log(
-        `[chat-open] hide после старта показа (reveal=${listRevealSv.value})`,
+        `[chat-open] hide-list (reveal-started=${listRevealStartedSv.value ? 1 : 0})`,
       );
     }
     cancelAnimation(listRevealSv);
@@ -1005,16 +1034,22 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   // --- Baseline поля ввода ---
 
   const commitComposeBaseline = useCallback(
-    (shellHeight: number) => {
+    (singleLineHeight: number) => {
+      if (singleLineHeight <= 0) return;
       const prev = composeBaselineRef.current;
+      // Android раньше держал первый замер навсегда: высота приходила общая,
+      // и принять её было нельзя — иначе полоса фото или лишняя строка впитывались
+      // в постоянный baseline. Теперь приходит однострочная база, и заметное
+      // расхождение — это реальное изменение (инсет, шрифт, отравленный старый
+      // замер в MMKV), его надо принять. iOS — как прежде, меньший из двух.
       const baseline =
-        Platform.OS === "android"
-          ? prev > 0
-            ? prev
-            : shellHeight
-          : prev > 0
-            ? Math.min(prev, shellHeight)
-            : shellHeight;
+        prev <= 0
+          ? singleLineHeight
+          : Platform.OS === "android"
+            ? Math.abs(prev - singleLineHeight) > COMPOSE_BASELINE_EPSILON_PX
+              ? singleLineHeight
+              : prev
+            : Math.min(prev, singleLineHeight);
       if (lastMeasuredComposeBaselinePx !== baseline) {
         lastMeasuredComposeBaselinePx = baseline;
         mmkv.set(COMPOSE_BASELINE_MMKV_KEY, baseline);
@@ -1024,21 +1059,26 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         composeBaselineSv.value = baseline;
         setComposeBaselinePx(baseline);
       }
-      composeGrowthSv.value = Math.max(0, shellHeight - baseline);
     },
-    [composeBaselineSv, composeGrowthSv],
+    [composeBaselineSv],
   );
 
   const onComposeShellLayout = useCallback(
-    (height: number) => {
+    (metrics: ComposeShellMetrics) => {
+      const height = metrics.height;
       if (height <= 0) return;
+      composeMediaHeightRef.current = metrics.mediaHeight;
       if (emojiPanelMountedRef.current) {
         // Пока панель открыта, baseline не калибруем — только рост поля.
         const baseline = composeBaselineRef.current || COMPOSE_BASELINE_FALLBACK_PX();
         composeGrowthSv.value = Math.max(0, height - baseline);
         return;
       }
-      commitComposeBaseline(height);
+      // Полоса есть, но не измерена: baseHeight = null, калибровка ждёт
+      // отчёта о полосе. Рост от этого не страдает — он идёт от height.
+      if (metrics.baseHeight != null) commitComposeBaseline(metrics.baseHeight);
+      const baseline = composeBaselineRef.current || COMPOSE_BASELINE_FALLBACK_PX();
+      composeGrowthSv.value = Math.max(0, height - baseline);
     },
     [commitComposeBaseline, composeGrowthSv],
   );
@@ -1048,24 +1088,15 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       if (height <= 0) return;
       if (composeBaselineRef.current > 0) return;
       if (emojiPanelMountedRef.current) return;
+      // Полоса вложений входит в высоту колонки: калибровать эту высоту как
+      // однострочное поле нельзя. Пока полоса есть — калибрует shell-отчёт.
+      if (composeMediaHeightRef.current !== null) return;
       const shellOnly = height - deleteBarHeightSv.value;
       if (shellOnly <= 0) return;
       commitComposeBaseline(shellOnly);
     },
     [commitComposeBaseline, deleteBarHeightSv],
   );
-
-  const recalibrateComposeBaseline = useCallback(() => {
-    if (emojiPanelMountedRef.current) return;
-    composeBaselineRef.current = 0;
-    composeBaselineSv.value = COMPOSE_BASELINE_FALLBACK_PX();
-    setComposeBaselinePx(0);
-    composeGrowthSv.value = 0;
-    // Догонять нечего: геометрия пересобирается заново, лента должна стоять
-    // ровно на новом зазоре, а не доезжать до старой цели.
-    cancelAnimation(composeGrowthHoldSv);
-    composeGrowthHoldSv.value = 0;
-  }, [composeBaselineSv, composeGrowthHoldSv, composeGrowthSv]);
 
   const setDeleteBarHeightPx = useCallback(
     (height: number) => {
@@ -1336,17 +1367,152 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   }, [kbShowRequestAtSv]);
 
   /**
+   * Довести shared values до нативного состояния без анимации: сверка — не
+   * движение клавиатуры, а снимок осевшей геометрии.
+   */
+  const reconcileKeyboardGeometry = useCallback(
+    (visible: boolean, heightPx: number) => {
+      const currentHeightPx = kbHeightSv.value;
+      const next = reconciledKeyboardGeometry({
+        visible,
+        nativeHeightPx: heightPx,
+        currentHeightPx,
+        currentProgress: kbProgressSv.value,
+      });
+      if (next == null) return;
+      if (__DEV__) {
+        // Диагностика возврата из пикера: видно, какой источник дал высоту и
+        // насколько она разошлась с геометрией дока.
+        console.debug("[chat-compose-dock] kb-reconcile", {
+          visible,
+          from: Math.round(currentHeightPx),
+          to: Math.round(next.heightPx),
+        });
+      }
+      kbHeightSv.value = next.heightPx;
+      kbProgressSv.value = next.progress;
+    },
+    [kbHeightSv, kbProgressSv],
+  );
+
+  /**
+   * Сверка геометрии IME по событию RN `Keyboard`. Видимость/высота оттуда —
+   * единственный источник, который переживает activity-pause: на Android
+   * `ReactRootView` шлёт didShow/didHide по global layout, сравнивая живые
+   * window-insets с флагом. `KeyboardController.isVisible()/state()` и его
+   * события сюда не годятся — они обновляются только insets-анимацией,
+   * которой после возврата из пикера может не быть (сверка повторяла бы уже
+   * потерянное событие).
+   */
+  const applyKeyboardState = useCallback(
+    (visible: boolean, eventHeightPx: number) => {
+      if (!emojiActiveRef.current) {
+        if (visible) {
+          kbShowRequestAtSv.value = 0;
+          setKeyboardOpen(true);
+        } else {
+          setKeyboardOpen(false);
+        }
+      }
+      reconcileKeyboardGeometry(
+        visible,
+        keyboardHeightForDock({
+          android: Platform.OS === "android",
+          eventHeightPx,
+          navInsetPx: systemNavBottomInsetPx,
+        }),
+      );
+    },
+    [kbShowRequestAtSv, reconcileKeyboardGeometry, systemNavBottomInsetPx],
+  );
+
+  const syncKeyboardFromRn = useCallback(() => {
+    const visible = Keyboard.isVisible();
+    const metrics = Keyboard.metrics();
+    applyKeyboardState(visible, visible ? (metrics?.height ?? 0) : 0);
+  }, [applyKeyboardState]);
+
+  /**
+   * Жёсткий возврат в idle. Для возврата из системного пикера: IME мы погасили
+   * до его запуска, а финальное move-событие провайдер мог не доставить —
+   * 320 мс сверки недостаточно, если система успела поднять клавиатуру обратно.
+   * Повторный dismiss гасит восстановленный IME, затем геометрия ставится в 0.
+   */
+  const settleKeyboardIdle = useCallback(() => {
+    Keyboard.dismiss();
+    kbShowRequestAtSv.value = 0;
+    if (!emojiActiveRef.current) setKeyboardOpen(false);
+    // Скрытие в полёте: snap оборвал бы анимацию кадром. Геометрию доведёт
+    // didHide, который RN на Android переигрывает и после activity-return.
+    if (Keyboard.isVisible()) return;
+    kbHeightSv.value = 0;
+    kbProgressSv.value = 0;
+  }, [kbHeightSv, kbProgressSv, kbShowRequestAtSv]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      if (imeResumeReconcileRef.current != null) {
+        clearTimeout(imeResumeReconcileRef.current);
+      }
+      if (imeResumeFrameRef.current != null) {
+        cancelAnimationFrame(imeResumeFrameRef.current);
+      }
+      // Кадр — insets уже пересчитаны, RN мог успеть переиграть переход;
+      // таймер — система восстановила IME чуть позже возврата activity.
+      imeResumeFrameRef.current = requestAnimationFrame(() => {
+        imeResumeFrameRef.current = null;
+        syncKeyboardFromRn();
+      });
+      imeResumeReconcileRef.current = setTimeout(() => {
+        imeResumeReconcileRef.current = null;
+        syncKeyboardFromRn();
+      }, IME_RECONCILE_RESUME_MS);
+    });
+    return () => {
+      sub.remove();
+      if (imeResumeFrameRef.current != null) {
+        cancelAnimationFrame(imeResumeFrameRef.current);
+        imeResumeFrameRef.current = null;
+      }
+      if (imeResumeReconcileRef.current != null) {
+        clearTimeout(imeResumeReconcileRef.current);
+        imeResumeReconcileRef.current = null;
+      }
+    };
+  }, [syncKeyboardFromRn]);
+
+  /**
+   * RN `Keyboard` — layout-driven источник истины. didShow/didHide после
+   * activity-return переигрывают пропущенный переход; геометрию доводим до
+   * осевшей высоты, не дожидаясь следующей анимации.
+   */
+  useEffect(() => {
+    const didShow = Keyboard.addListener("keyboardDidShow", (event) => {
+      applyKeyboardState(true, event.endCoordinates?.height ?? 0);
+    });
+    const didHide = Keyboard.addListener("keyboardDidHide", () => {
+      applyKeyboardState(false, 0);
+    });
+    return () => {
+      didShow.remove();
+      didHide.remove();
+    };
+  }, [applyKeyboardState]);
+
+  /**
    * Клавиатура пошла вверх (кнопка, тап по инпуту, авто-фокус): переключаем
    * режим/иконку сразу; геометрию ведут воркалеты.
    */
   useEffect(() => {
-    const onKeyboardShow = () => {
+    /** false — событие устаревшее (панель эмодзи гасит IME), геометрию не трогаем. */
+    const onKeyboardShow = (): boolean => {
       if (emojiActiveRef.current) {
         // Показ, стартовавший до openEmoji (быстрый тап «клавиатура→эмодзи»):
         // не отдаём режим устаревшему событию — повторно гасим IME.
         if (Date.now() - emojiIntentAtRef.current < EMOJI_INTENT_GRACE_MS) {
           void KeyboardController.dismiss({ keepFocus: true });
-          return;
+          return false;
         }
         emojiActiveRef.current = false;
         emojiActiveSv.value = false;
@@ -1354,20 +1520,34 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
       }
       kbShowRequestAtSv.value = 0;
       setKeyboardOpen(true);
+      return true;
     };
-    const willShowSub = KeyboardEvents.addListener("keyboardWillShow", onKeyboardShow);
-    const didShowSub = KeyboardEvents.addListener("keyboardDidShow", onKeyboardShow);
+    const willShowSub = KeyboardEvents.addListener("keyboardWillShow", () => {
+      onKeyboardShow();
+    });
+    const didShowSub = KeyboardEvents.addListener("keyboardDidShow", (event) => {
+      if (onKeyboardShow()) reconcileKeyboardGeometry(true, event.height);
+    });
     const didHideSub = KeyboardEvents.addListener("keyboardDidHide", () => {
-      if (!emojiActiveRef.current) {
-        setKeyboardOpen(false);
-      }
+      // didHide мог прийти от старого IME при смене раскладки/движка, пока
+      // новый уже виден. Сверяемся с состоянием RN (layout-driven), а не
+      // роняем док по одному событию — иначе поле уезжает под клавиатуру.
+      // Кадр спустя: воркалет провайдера пишет те же SV и должен финишировать
+      // первым, а RN к этому моменту уже обновил флаг видимости.
+      requestAnimationFrame(() => {
+        if (Keyboard.isVisible()) {
+          syncKeyboardFromRn();
+          return;
+        }
+        applyKeyboardState(false, 0);
+      });
     });
     return () => {
       willShowSub.remove();
       didShowSub.remove();
       didHideSub.remove();
     };
-  }, [emojiActiveSv, kbShowRequestAtSv]);
+  }, [applyKeyboardState, emojiActiveSv, kbShowRequestAtSv, reconcileKeyboardGeometry, syncKeyboardFromRn]);
 
   useKeyboardHandler(
     {
@@ -1448,11 +1628,13 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     setDeleteBarHeightState(0);
     // Не в 0, а к последнему замеру: док одинаков во всех чатах — следующее
     // открытие стартует с готовым listGapPx и снятым гейтом baseline>0
-    // (onLayout при совпадении высоты не коммитит вовсе).
+    // (onLayout при совпадении высоты не коммитит вовсе). Если замера ещё не
+    // было, state всё равно остаётся положительным: 0 гасит показ ленты
+    // (`composeBaselinePx > 0`) до следующего layout-события.
     composeBaselineRef.current = lastMeasuredComposeBaselinePx;
-    composeBaselineSv.value =
-      lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX();
-    setComposeBaselinePx(lastMeasuredComposeBaselinePx);
+    const baseline = lastMeasuredComposeBaselinePx || COMPOSE_BASELINE_FALLBACK_PX();
+    composeBaselineSv.value = baseline;
+    setComposeBaselinePx(baseline);
     Keyboard.dismiss();
   }, [
     composeBaselineSv,
@@ -1521,7 +1703,6 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     composeGrowthHoldSv,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
-    recalibrateComposeBaseline,
     emojiPanelMounted,
     emojiAccessoryActive,
     keyboardOpen,
@@ -1531,6 +1712,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     showKeyboard,
     toggleEmoji,
     dismissKeyboard,
+    settleKeyboardIdle,
     resetDock,
   };
 }

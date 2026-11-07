@@ -47,6 +47,7 @@ import {
   chatPushEnterKickoff,
   chatPushOffEdgeNotifies,
   chatPushPressBlockedByPlay,
+  chatPushResetAllowed,
   chatPushSlideStartOnCarpet,
   chatWarmMountedIds,
   selectChatWarmMeasureIds,
@@ -292,6 +293,9 @@ export function runChatPushExit(
 ): boolean {
   const nextEpoch = reverseEpoch + 1;
   const started = chatPush.runExit(driven, () => {
+    // exiting снят в runExit до колбэка: публикуем до любых ранних return,
+    // иначе таб-бар останется с устаревшим exiting = true.
+    publishPark();
     if (nextEpoch !== reverseEpoch) return;
     finishChatSlideExitFrame();
     if (parkPhase === "parked" || parkPhase === "play-wait") return;
@@ -304,6 +308,7 @@ export function runChatPushExit(
   reverseEpoch = nextEpoch;
   slideEpoch += 1;
   setChatPushOffEdge(true);
+  publishPark();
   return true;
 }
 
@@ -318,16 +323,51 @@ export function completeChatPushExitVisual(): void {
 }
 
 export function resetChatPushProgress(): void {
-  // Фокус списка возвращается в тот же кадр, что и pop оболочки. Слайд
-  // ещё на оверлее — сброс здесь оборвал бы уход. progress = 0 здесь не pop.
-  if (chatPush.isExiting()) return;
-  // Переподписка фокуса списка не снимает парковку и ещё не доехавший слайд:
-  // список остаётся в фокусе, пока оболочка не запушена.
-  if (parkPhase === "parked" || parkPhase === "play-wait") return;
-  if (parkPhase === "playing" && !shellPushed) return;
+  if (
+    !chatPushResetAllowed({
+      exiting: chatPush.isExiting(),
+      shellInStack: chatShellInStack,
+      threadRouteMounted: chatThreadRouteMounts > 0,
+      phase: parkPhase,
+      shellPushed,
+    })
+  ) {
+    // Пока тред открыт (оболочка в стеке) или слайд ещё едет — сброс
+    // обнулил бы progress под живым экраном: оболочка pop-ается, парковка
+    // остаётся поверх списка и перестаёт пропускать тапы. Нормальный выход
+    // чистит состояние через runChatPushExit.
+    return;
+  }
+  if (__DEV__) {
+    // Диагностика «сброса под живым тредом»: trace называет вызывающего (фокус
+    // списка / скролл / blur) и состояние парка на момент сброса.
+    console.trace("[chat-push] resetChatPushProgress", {
+      phase: parkPhase,
+      shellPushed,
+      shellInStack: chatShellInStack,
+      threadRouteMounted: chatThreadRouteMounts,
+    });
+  }
   exitPopArmed = false;
   releaseChatPark();
   chatPush.reset();
+}
+
+/**
+ * Ремонт поверхности треда: маршрут открыт, экран уже стоит в кадре
+ * (`surfacePinned`), а progress сбросили снаружи (возврат из activity).
+ * Бар, параллакс списка и хиты читают progress — возвращаем 1 и публикуем
+ * снимок. Парк и идущий слайд (`driven`) не трогаем.
+ */
+export function repairChatPushSurface(): void {
+  if (drivenRef?.value) return;
+  cancelAnimation(chatPush.progress);
+  chatPush.progress.value = 1;
+  exitOffEdge = false;
+  publishPark();
+  if (__DEV__) {
+    console.debug("[chat-push] surface-repair", { phase: parkPhase });
+  }
 }
 
 /**
@@ -382,6 +422,13 @@ let shellPushed = false;
  * флаг пуша, пока прозрачный экран ещё в стеке.
  */
 let chatShellInStack = false;
+/**
+ * Сколько экранов треда сейчас смонтировано маршрутами (оболочка парковки или
+ * полный экран без неё). Пока счётчик > 0, аварийный reset обязан молчать:
+ * release парковки под живым маршрутом оставляет прозрачный modal поверх
+ * списка и съедает его тапы.
+ */
+let chatThreadRouteMounts = 0;
 /** runChatPushExit уже начат. park и reset фокуса списка снимают, чтобы не pop. */
 let exitPopArmed = false;
 let enterStarted = false;
@@ -1023,6 +1070,7 @@ function beginReverseExit(): void {
   const started = chatPush.runExit(
     driven,
     () => {
+      publishPark();
       if (epoch !== reverseEpoch) return;
       finishChatSlideExitFrame();
       if (parkPhase === "parked" || parkPhase === "play-wait") return;
@@ -1033,6 +1081,7 @@ function beginReverseExit(): void {
   if (started) {
     beginChatSlideImagePause();
     setChatPushOffEdge(true);
+    publishPark();
   }
   if (!started) releaseParkAtEdge();
 }
@@ -1048,6 +1097,15 @@ export function disarmChatPushExitPop(): void {
 
 export function setChatPushShellInStack(inStack: boolean): void {
   chatShellInStack = inStack;
+}
+
+/** Пара к вызову: true на mount маршрута треда, false на unmount. */
+export function setChatPushThreadRouteMounted(mounted: boolean): void {
+  chatThreadRouteMounts = Math.max(0, chatThreadRouteMounts + (mounted ? 1 : -1));
+}
+
+export function isChatPushThreadRouteMounted(): boolean {
+  return chatThreadRouteMounts > 0;
 }
 
 export function getChatPushShellInStack(): boolean {
@@ -1183,6 +1241,7 @@ export function cancelChatPushParkFromScroll(): void {
     if (hadSchedule) scrollCancelledPark = true;
     return;
   }
+  if (isChatPushThreadRouteMounted()) return;
   scrollCancelledPark = true;
   releaseChatPark();
   chatPush.reset();
@@ -1192,6 +1251,7 @@ export function cancelChatPushParkFromScroll(): void {
 export function cancelChatPushParkFromLeave(): void {
   cancelScheduledChatRowPark();
   if (parkPhase !== "parked" && parkPhase !== "play-wait") return;
+  if (isChatPushThreadRouteMounted()) return;
   releaseChatPark();
   chatPush.reset();
 }

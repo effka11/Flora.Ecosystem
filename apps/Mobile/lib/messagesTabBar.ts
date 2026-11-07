@@ -37,6 +37,19 @@ export function isMessagesInThreadPath(pathname: string): boolean {
   return /^\/messages\/[^/]+/.test(pathname.replace(/\/$/, ""));
 }
 
+/**
+ * Открыт ли экран треда (маршрут `[conversationUuid]`). Поверхность треда —
+ * полный экран чата: таб-бар не рендерится, compose-док живёт у низа сам.
+ * Проверка по маршруту, а не по progress: progress может быть сброшен извне
+ * (activity-return), маршрут при этом остаётся открытым.
+ */
+export function isMessagesThreadSurface(args: {
+  segments: readonly string[];
+  pathname: string;
+}): boolean {
+  return isMessagesInThread(args.segments) || isMessagesInThreadPath(args.pathname);
+}
+
 /** Tab bar для вкладки «Сообщения»: скрыт внутри треда, виден на списке диалогов. */
 export function messagesTabBarStyleForRoute(
   route: FocusableRoute | undefined,

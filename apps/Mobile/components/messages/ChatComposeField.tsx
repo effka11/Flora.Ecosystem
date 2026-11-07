@@ -32,6 +32,7 @@ import { KeyboardController } from "react-native-keyboard-controller";
 import { ChatComposeImageStrip } from "@/components/messages/ChatComposeImageStrip";
 import { ChatVoiceComposeBar } from "@/components/messages/ChatVoiceComposeBar";
 import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
+import { composeShellMetrics, type ComposeShellMetrics } from "@/lib/composeShellMetrics";
 import type { DraftMessageImage } from "@/lib/useMessageComposeImages";
 import { useSPx } from "@/lib/FloraGridProvider";
 import { floraColors, floraMessages, floraSpacing, kegl, tracking } from "@/lib/theme";
@@ -103,10 +104,10 @@ type Props = {
   onPickImages?: () => void;
   hasPendingImages?: boolean;
   /**
-   * Высота оболочки для дока: измерение покоя, а на смене числа строк — сразу
-   * посчитанная цель, ещё до того, как поле до неё доедет.
+   * Метрики оболочки для дока: полная высота, полоса вложений и однострочный
+   * baseline без полосы. Экран не выводит baseline из общей высоты сам.
    */
-  onShellLayout?: (height: number) => void;
+  onShellLayout?: (metrics: ComposeShellMetrics) => void;
   /**
    * Догон ленты: сколько ей осталось проехать до уже применённой ступени
    * зазора. Ход у ленты и у pill один и тот же, поэтому и величина одна: поле
@@ -173,6 +174,16 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   const [inputMounted, setInputMounted] = useState(mountInput);
   const inputMountedRef = useRef(inputMounted);
   inputMountedRef.current = inputMounted;
+  /** Есть ли полоса вложений прямо сейчас (без ожидания layout-события). */
+  const imagesPresentRef = useRef(!voiceMode && images.length > 0 && onRemoveImageAt != null);
+  imagesPresentRef.current = !voiceMode && images.length > 0 && onRemoveImageAt != null;
+  /** Измеренная высота полосы вложений; 0 — ещё не измерена. */
+  const mediaHeightRef = useRef(0);
+  if (!imagesPresentRef.current) mediaHeightRef.current = 0;
+  /** Последняя измеренная высота оболочки — для повторного отчёта после медиа. */
+  const shellHeightRef = useRef(0);
+  /** Отложенный отчёт о высоте полосы: ждём shell-onLayout того же прохода. */
+  const mediaReportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Фокус, запрошенный до монтажа инпута, — исполняется в его первом коммите. */
   const pendingFocusRef = useRef(false);
   useEffect(() => {
@@ -240,9 +251,15 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
   const commitShellHeight = useCallback(
     (height: number) => {
-      shellBaseHeightRef.current =
-        height - (inputRowsRef.current - 1) * floraMessages.composeInputLineHeight;
-      onShellLayout?.(height);
+      const metrics = composeShellMetrics({
+        height,
+        rows: inputRowsRef.current,
+        mediaPresent: imagesPresentRef.current,
+        mediaHeight: mediaHeightRef.current,
+        lineHeight: floraMessages.composeInputLineHeight,
+      });
+      if (metrics.baseHeight != null) shellBaseHeightRef.current = metrics.baseHeight;
+      onShellLayout?.(metrics);
     },
     [onShellLayout],
   );
@@ -250,6 +267,7 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
   const reportShellLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const height = event.nativeEvent.layout.height;
+      shellHeightRef.current = height;
       if (growingRef.current) {
         droppedShellHeightRef.current = height;
         return;
@@ -257,6 +275,38 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
       commitShellHeight(height);
     },
     [commitShellHeight],
+  );
+
+  /**
+   * Полоса фото меряется отдельно от оболочки. Отчёт доку откладываем на
+   * следующий тик: shell-onLayout того же layout-прохода должен успеть
+   * обновить высоту, иначе высота полосы посчитается по старой оболочке.
+   */
+  const reportMediaLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (!imagesPresentRef.current) return;
+      mediaHeightRef.current = event.nativeEvent.layout.height;
+      if (growingRef.current) return;
+      if (mediaReportTimerRef.current != null) clearTimeout(mediaReportTimerRef.current);
+      mediaReportTimerRef.current = setTimeout(() => {
+        mediaReportTimerRef.current = null;
+        if (!imagesPresentRef.current) return;
+        const shellHeight = shellHeightRef.current;
+        if (shellHeight <= 0) return;
+        commitShellHeight(shellHeight);
+      }, 0);
+    },
+    [commitShellHeight],
+  );
+
+  useEffect(
+    () => () => {
+      if (mediaReportTimerRef.current != null) {
+        clearTimeout(mediaReportTimerRef.current);
+        mediaReportTimerRef.current = null;
+      }
+    },
+    [],
   );
 
   /**
@@ -303,11 +353,22 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
       growingRef.current = true;
       const base = shellBaseHeightRef.current;
+      const media = imagesPresentRef.current ? mediaHeightRef.current : 0;
       shellTargetHeightRef.current =
-        base > 0 ? base + (rows - 1) * floraMessages.composeInputLineHeight : 0;
+        base > 0 ? base + media + (rows - 1) * floraMessages.composeInputLineHeight : 0;
       // Цель дока — тем же коммитом: ступень и недобор (growthHoldSv) гасят
       // друг друга в этом кадре, а дальше лента едет ровно кривой pill.
-      if (shellTargetHeightRef.current > 0) onShellLayout?.(shellTargetHeightRef.current);
+      if (shellTargetHeightRef.current > 0) {
+        onShellLayout?.(
+          composeShellMetrics({
+            height: shellTargetHeightRef.current,
+            rows,
+            mediaPresent: imagesPresentRef.current,
+            mediaHeight: mediaHeightRef.current,
+            lineHeight: floraMessages.composeInputLineHeight,
+          }),
+        );
+      }
     },
     [inputHeightSv, inputTargetSv, onGrowSettled, onShellLayout],
   );
@@ -432,7 +493,11 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
       ]}
     >
       {!voiceMode && images.length > 0 && onRemoveImageAt ? (
-        <ChatComposeImageStrip images={images} onRemoveAt={onRemoveImageAt} />
+        <ChatComposeImageStrip
+          images={images}
+          onRemoveAt={onRemoveImageAt}
+          onLayout={reportMediaLayout}
+        />
       ) : null}
 
       <View style={styles.fieldZone}>

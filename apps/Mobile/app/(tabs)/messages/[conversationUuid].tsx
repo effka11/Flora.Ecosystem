@@ -128,7 +128,6 @@ import {
   setTemporaryMute,
   useTemporaryMuteUntilByPeer,
 } from "@/lib/conversationTemporaryMute";
-import { applyMessagesTabBarHidden } from "@/lib/messagesTabBar";
 import {
   type ChatPushParkParams,
   chatPushProgress,
@@ -150,15 +149,19 @@ import {
   completeChatPushExitVisual,
   disarmChatPushExitPop,
   getChatPushParkPhase,
+  getChatPushOffEdge,
   getChatPushShellInStack,
   isChatPushExitPopArmed,
+  isChatPushThreadRouteMounted,
   registerChatPushDriven,
   unregisterChatPushDriven,
+  repairChatPushSurface,
   runChatPushEnter,
   runChatPushExit,
   subscribeChatPush,
   clearChatWarmGateOwner,
   setChatPushShellInStack,
+  setChatPushThreadRouteMounted,
   setChatWarmScreenFocused,
   setChatWarmScrollBusy,
 } from "@/lib/chatPushTransition";
@@ -167,13 +170,16 @@ import {
   CHAT_PUSH_OFF_EDGE,
   CHAT_WARM_THREAD_SETTLE_MS,
   chatBenchPromoteKeepsReveal,
+  chatListShouldMountSettled,
   chatPushShellShouldPop,
   chatBenchSlotTranslateX,
   chatListHiddenUntilReveal,
   chatPushRepeatBackKeepsIntercept,
   chatThreadListRevealInput,
   nextChatListMounted,
+  shouldResetChatListMount,
   shouldRevealMeasuredWindow,
+  shouldRunChatPushEnter,
   warmLayoutEffectMayReveal,
   warmLayoutRevealAction,
 } from "@/lib/chatListEnterMount";
@@ -297,6 +303,11 @@ const EMPTY_MESSAGES: MsgMessageDto[] = [];
 
 /** Сколько ждать расшифровки, прежде чем показать ленту как есть. */
 const LIST_REVEAL_DEADLINE_MS = 1200;
+/**
+ * Пауза перед снятием «пустой» оболочки маршрута: чат уже за краем, а
+ * прозрачный modal всё ещё в стеке (иначе он держит список и ест тапы).
+ */
+const STALE_SHELL_POP_MS = 500;
 
 /** Пауза между первым видимым кадром ленты и тихим сетевым догрузом. */
 const POST_REVEAL_REFRESH_DELAY_MS = 250;
@@ -445,6 +456,10 @@ function chatPushSlidingOff(): boolean {
   return false;
 }
 
+function chatPushOffEdgeOff(): boolean {
+  return false;
+}
+
 function chatPushGenerationIdle(): number {
   return 0;
 }
@@ -454,6 +469,7 @@ export function ThreadScreen({
   bench = false,
   benchAttempt = 0,
   measureFrame = false,
+  threadSurfaced = false,
 }: {
   overlayParams?: ChatPushParkParams;
   /** Окно собирается на скамье и не владеет слайдом, пока его не повысили. */
@@ -468,6 +484,12 @@ export function ThreadScreen({
    * Закрытый слот и активный до runEnter остаются на `translateX: screenWidth`.
    */
   measureFrame?: boolean;
+  /**
+   * Маршрут этого чата уже в стеке и не на выходе: экран — текущая сцена.
+   * Слайд по progress больше не применяется — сброшенный извне progress не
+   * должен увести видимый чат за край (пузыри и поле «пропадают»).
+   */
+  threadSurfaced?: boolean;
 } = {}) {
   useFloraTheme();
   const insets = useSafeAreaInsets();
@@ -500,8 +522,18 @@ export function ThreadScreen({
     [screenWidth],
   );
   const navigation = useNavigation();
-  const tabBarBottomInset = Math.max(insets.bottom, 8);
-  const systemNavBottomInset = resolveMessagesDockBottomInset(insets);
+  /**
+   * Нижний системный инсет — константа устройства на сессию. Во время IME /
+   * edge-to-edge safe-area может кратко отдать 0; скачок инсета меняет
+   * translate дока посреди анимации — поле «проваливается». Держим последнее
+   * ненулевое значение.
+   */
+  const navBottomInsetRef = useRef(0);
+  if (insets.bottom > 0) navBottomInsetRef.current = insets.bottom;
+  const systemNavBottomInset = resolveMessagesDockBottomInset({
+    ...insets,
+    bottom: insets.bottom > 0 ? insets.bottom : navBottomInsetRef.current,
+  });
 
   const {
     dockStickyStyle,
@@ -533,7 +565,6 @@ export function ThreadScreen({
     composeGrowthHoldSv,
     onDockColumnIdleLayout,
     setDeleteBarHeightPx,
-    recalibrateComposeBaseline,
     emojiPanelMounted,
     emojiAccessoryActive,
     keyboardOpen,
@@ -541,6 +572,7 @@ export function ThreadScreen({
     closeEmoji,
     toggleEmoji,
     dismissKeyboard,
+    settleKeyboardIdle,
     resetDock,
     // Темп проявления ленты зависит от того, едет ли ещё сцена: под слайдом
     // движение маскирует появление контента, и фейд короче (см. док).
@@ -623,6 +655,8 @@ export function ThreadScreen({
     setReplyTo(null);
     setDeleteBarHeightPx(0);
   }, [setDeleteBarHeightPx]);
+  /** Пока идёт отправка — черновик виден, но не редактируется. */
+  const ignoreRemoveWhileSending = useCallback(() => {}, []);
 
   const routeParams = useLocalSearchParams<{
     conversationUuid: string;
@@ -654,6 +688,15 @@ export function ThreadScreen({
   const chatPushEnterGeneration = useSyncExternalStore(
     bench ? subscribeChatWarmIdle : subscribeChatPush,
     bench ? chatPushGenerationIdle : getChatPushEnterGeneration,
+  );
+  /**
+   * Снимок off-edge: под живым маршрутом треда progress обязан быть 1.
+   * Сброс приходит только извне (фокус списка после activity); ловим его
+   * здесь и возвращаем кадр в согласованное состояние.
+   */
+  const chatPushOffEdge = useSyncExternalStore(
+    bench ? subscribeChatWarmIdle : subscribeChatPush,
+    bench ? chatPushOffEdgeOff : getChatPushOffEdge,
   );
   const preparingWindow = bench || chatPushHolding;
 
@@ -835,26 +878,18 @@ export function ThreadScreen({
   }, [bench, chatPushHolding, chatPushSliding, conversationUuid, listRevealed]);
 
   /**
-   * Инсет через ref: смена insets.bottom (скрытие таб-бара, жестовая панель)
-   * меняла бы зависимость focus-эффекта, и его cleanup дёргал resetDock
-   * посреди открытого чата — сброс базлайна дока и шум content-size.
-   */
-  const tabBarBottomInsetRef = useRef(tabBarBottomInset);
-  useEffect(() => {
-    tabBarBottomInsetRef.current = tabBarBottomInset;
-  }, [tabBarBottomInset]);
-  /**
-   * Владелец записей гейта скамьи: фокус маршрута и скролл этого инстанса.
-   * Скамья и оверлей-парковка фокуса не держат (их маршрут — список).
+   * Видимость таб-бара в треде — не ответственность экрана: её ведёт единый
+   * `MessagesTabBarGate` по маршруту. Императивные setOptions отсюда и из
+   * списка спорили друг с другом при возврате фокуса (activity-return),
+   * открывая бар поверх поля ввода.
    */
   const warmGateOwner = useMemo(() => Symbol("chat-thread"), []);
   useEffect(() => () => clearChatWarmGateOwner(warmGateOwner), [warmGateOwner]);
   useFocusEffect(
     useCallback(() => {
-      // Оверлей парковки не экран маршрута: фокус и таб-бар остаются у списка,
+      // Оверлей парковки не экран маршрута: фокус остаётся у списка,
       // пока play не запушит оболочку треда.
       if (overlayHost) return;
-      applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, true);
       chatUiFrameKeepAlive.setActive(true);
       // Тред маршрута — экран вкладки Messages: очередь скамьи продолжает под
       // ним, после паузы на доклейку окна и волны расшифровки этого чата.
@@ -862,10 +897,9 @@ export function ThreadScreen({
       return () => {
         setChatWarmScreenFocused(warmGateOwner, false);
         chatUiFrameKeepAlive.setActive(false);
-        applyMessagesTabBarHidden(navigation, tabBarBottomInsetRef.current, false);
         resetDock();
       };
-    }, [chatUiFrameKeepAlive, navigation, overlayHost, resetDock, warmGateOwner]),
+    }, [chatUiFrameKeepAlive, overlayHost, resetDock, warmGateOwner]),
   );
   useEffect(() => {
     if (!overlayHost || preparingWindow) return;
@@ -912,6 +946,7 @@ export function ThreadScreen({
       slideDriven: chatPushDriven.value,
       slideProgress: chatPushProgress.value,
       screenWidth,
+      surfacePinned: threadSurfaced,
     });
     if (translateX == null) return {};
     return { transform: [{ translateX }] };
@@ -926,11 +961,33 @@ export function ThreadScreen({
   useLayoutEffect(() => {
     // Скамья слайд не начинает. Парковка и закоммиченный play — тоже:
     // вход зовёт сам переход, иначе runEnter делит кадры с коммитом треда.
-    if (bench) return;
-    if (isChatPushHoldingSlide() || isChatPushSlideHeld()) return;
-    if (didAlreadyRunChatPushEnter()) return;
+    if (
+      !shouldRunChatPushEnter({
+        bench,
+        overlayHost,
+        holdingSlide: isChatPushHoldingSlide(),
+        slideHeld: isChatPushSlideHeld(),
+        enterAlreadyRun: didAlreadyRunChatPushEnter(),
+      })
+    ) {
+      return;
+    }
     runChatPushEnter(chatPushDriven);
-  }, [bench, chatPushDriven, chatPushEnterGeneration, conversationUuid]);
+  }, [bench, chatPushDriven, chatPushEnterGeneration, conversationUuid, overlayHost]);
+
+  /**
+   * Ремонт поверхности треда: маршрут открыт и не на выходе, а progress
+   * сброшен снаружи (фокус списка после activity-return). Кадр уже стоит
+   * (surfacePinned), но бар и параллакс списка живут по progress — возвращаем 1.
+   * Во время слайда driven=true — его анимацию не трогаем. Скамья сюда не
+   * входит: её окна стоят за краем с progress = 0.
+   */
+  const surfaceOpen = !bench && (threadSurfaced || !overlayHost);
+  useLayoutEffect(() => {
+    if (!surfaceOpen || !chatPushOffEdge) return;
+    if (chatPushDriven.value) return;
+    repairChatPushSurface();
+  }, [chatPushDriven, chatPushOffEdge, surfaceOpen]);
 
   /**
    * В парковке FlashList монтируется сразу: коммит пузырей идёт, пока экран
@@ -950,16 +1007,33 @@ export function ThreadScreen({
   const enterArmedAtRender = isChatPushEnterArmed();
   // Свежий arm без парковки снимает ленту на время слайда. play из парковки
   // уже sliding — защёлку не сбрасывать, коммит не начинается заново.
-  if (enterArmedAtRender && !chatPushHolding && !chatPushSliding) {
+  // На уже открытом треде (парковка/overlay или показанная лента) взвод не
+  // должен размонтировать FlashList: иначе после activity-return или повторного
+  // arm пузыри исчезают «насовсем» до переоткрытия чата.
+  if (
+    !isChatPushThreadRouteMounted() &&
+    shouldResetChatListMount({
+      overlayHost,
+      listRevealed,
+      enterArmed: enterArmedAtRender,
+      holding: chatPushHolding,
+      sliding: chatPushSliding,
+    })
+  ) {
     listEnterSettledRef.current = false;
   }
-  const listMounted = nextChatListMounted({
-    parked: preparingWindow,
-    sliding: chatPushSliding,
-    enterArmed: enterArmedAtRender,
-    enterProgress: listEnterSettledRef.current ? 1 : 0,
-    mounted: listEnterSettledRef.current,
-  });
+  const listMounted =
+    nextChatListMounted({
+      parked: preparingWindow,
+      sliding: chatPushSliding,
+      enterArmed: enterArmedAtRender,
+      enterProgress: listEnterSettledRef.current ? 1 : 0,
+      mounted: listEnterSettledRef.current,
+    }) ||
+    // Страховка overlay-треда: если progress уже открытого чата сбросили
+    // (activity-return), защёлка не должна оставить тред без FlashList —
+    // пузыри иначе пропадают до переоткрытия. Слайд/парковку не трогаем.
+    (overlayHost && !chatPushHolding && !chatPushSliding);
   if (listMounted) listEnterSettledRef.current = true;
   const latchListMounted = useCallback(() => {
     const next = nextChatListMounted({
@@ -977,15 +1051,20 @@ export function ThreadScreen({
     if (listMounted) notifyChatPushListMounted(conversationUuid);
   }, [conversationUuid, listMounted]);
   useLayoutEffect(() => {
-    // Мгновенный вход (deep link, reduce motion): runEnter уже поставил
-    // progress = 1 и снял driven. Анимированный вход здесь ещё едет —
-    // защёлку закроет реакция, когда progress дойдёт до 1.
-    // Парковка монтирует ленту в рендере, не дожидаясь progress = 1.
-    if (chatPushHolding) return;
-    if (chatPushDriven.value) return;
-    if (chatPushProgress.value < 1) return;
-    latchListMounted();
-  }, [chatPushDriven, chatPushHolding, conversationUuid, latchListMounted]);
+    if (listEnterSettledRef.current) return;
+    // Вход не анимируется или уже закончился (driven снят). Progress < 1 здесь —
+    // не слайд, а внешний reset под живым тредом: оставлять тред без FlashList
+    // нельзя, пузыри пропадают до переоткрытия чата.
+    const settled = chatListShouldMountSettled({
+      holding: chatPushHolding,
+      driven: chatPushDriven.value,
+      progress: chatPushProgress.value,
+      mounted: false,
+    });
+    if (!settled) return;
+    listEnterSettledRef.current = true;
+    setListMountEpoch((epoch) => epoch + 1);
+  }, [chatPushDriven, chatPushHolding, conversationUuid]);
   useAnimatedReaction(
     () => {
       if (!slideOwnedSv.value) return -1;
@@ -1097,6 +1176,8 @@ export function ThreadScreen({
   const {
     images: composeImages,
     hasPendingPrepare,
+    prepareError: composePrepareError,
+    clearPrepareError,
     clearImages,
     removeImageAt,
     pickImages,
@@ -1116,23 +1197,12 @@ export function ThreadScreen({
   });
 
   const typingEmitterRef = useRef<TypingEmitter | null>(null);
-  const prevVoiceModeRef = useRef(voiceMode);
-  const prevComposeImageCountRef = useRef(composeImages.length);
   useEffect(() => {
-    const wasVoice = prevVoiceModeRef.current === "voice";
-    prevVoiceModeRef.current = voiceMode;
-    if (wasVoice && voiceMode !== "voice") {
-      recalibrateComposeBaseline();
-    }
-  }, [voiceMode, recalibrateComposeBaseline]);
+    if (!composePrepareError) return;
+    Alert.alert("Фото", composePrepareError);
+    clearPrepareError();
+  }, [clearPrepareError, composePrepareError]);
 
-  useEffect(() => {
-    const prevCount = prevComposeImageCountRef.current;
-    prevComposeImageCountRef.current = composeImages.length;
-    if (prevCount > 0 && composeImages.length === 0) {
-      recalibrateComposeBaseline();
-    }
-  }, [composeImages.length, recalibrateComposeBaseline]);
 
   useEffect(() => {
     if (voiceRecorder.error) {
@@ -2527,9 +2597,31 @@ export function ThreadScreen({
 
   const onPickImages = useCallback(async () => {
     if (!canSend()) return;
-    const error = await pickImages();
-    if (error) Alert.alert("Фото", error);
-  }, [canSend, pickImages]);
+    // Пикер — отдельная activity. Запускать её в середине входного слайда
+    // нельзя: пауза activity прерывает withTiming входа, маршрут не пушится,
+    // и тред остаётся в фазе playing с недоехавшим progress.
+    if (chatPushProgress.value < 1) return;
+    // Гасим IME (и снимаем фокус с поля), панель до запуска пикера, иначе
+    // окно и клавиатура возвращаются в рассогласованном состоянии и док
+    // остаётся ниже своего места.
+    composeRef.current?.blurInput();
+    dismissKeyboard();
+    closeEmoji();
+    try {
+      const error = await pickImages();
+      if (error) Alert.alert("Фото", error);
+    } catch (err) {
+      // Unhandled rejection в release не виден и оставляет пустой экран без
+      // объяснения — показываем причину обычным Alert.
+      Alert.alert("Фото", err instanceof Error ? err.message : "Не удалось открыть галерею.");
+    } finally {
+      // Возврат из activity: финальный move IME мог не дойти, а система могла
+      // восстановить клавиатуру. Повторно гасим панель и IME и ставим док в
+      // idle — иначе он висит под клавиатурой до следующей ручной анимации.
+      closeEmoji();
+      settleKeyboardIdle();
+    }
+  }, [canSend, closeEmoji, dismissKeyboard, pickImages, settleKeyboardIdle]);
 
   // Голосовой режим закрывает панель эмодзи (closeEmoji); клавиатуру явно не трогаем.
   // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
@@ -2758,11 +2850,13 @@ export function ThreadScreen({
   }, []);
 
   const onSend = async (draft: string) => {
+    if (sending) return;
     const trimmed = draft.trim();
 
     if (isGroupChat) {
       if (!conversationUuid || !me?.userUuid) return;
       if (!trimmed && composeImages.length === 0) return;
+      if (hasPendingPrepare) return;
       if (!canSend() || !useFscpStore.getState().material) {
         setUnlockOpen(true);
         Alert.alert(
@@ -2777,11 +2871,7 @@ export function ThreadScreen({
       }));
       const activeReply = replyTo;
       setSending(true);
-      setReplyTo(null);
-      setDeleteBarHeightPx(0);
       atBottomRef.current = true;
-      composeRef.current?.clearText();
-      clearImages();
       try {
         if (imageSnapshot.length === 0) {
           const result = await groupThread.sendText(trimmed, {
@@ -2795,8 +2885,11 @@ export function ThreadScreen({
               );
             },
           });
-          if (!result.ok && result.restoreDraft) {
-            composeRef.current?.setText(trimmed);
+          if (result.ok) {
+            composeRef.current?.clearText();
+            clearImages();
+            setReplyTo(null);
+            setDeleteBarHeightPx(0);
           }
           return;
         }
@@ -2826,13 +2919,15 @@ export function ThreadScreen({
             playChatListInsertLift(insertLiftSv, estimateBlocksInsertLiftPx(blocks, outgoingLiftCtx));
           },
         });
-        if (!result.ok && result.restoreDraft) {
-          composeRef.current?.setText(trimmed);
+        if (result.ok) {
+          composeRef.current?.clearText();
+          clearImages();
+          setReplyTo(null);
+          setDeleteBarHeightPx(0);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
         Alert.alert("Отправка", message);
-        if (trimmed) composeRef.current?.setText(trimmed);
       } finally {
         setSending(false);
       }
@@ -2863,10 +2958,6 @@ export function ThreadScreen({
 
     typingEmitterRef.current?.stop();
     setSending(true);
-    composeRef.current?.clearText();
-    clearImages();
-    setReplyTo(null);
-    setDeleteBarHeightPx(0);
     atBottomRef.current = true;
 
     insertOptimisticOutgoingThreadMessage({
@@ -2933,6 +3024,12 @@ export function ThreadScreen({
         attachments: imageAssetUuids.length > 0 ? { imageAssetUuids } : undefined,
         encryptedPushPreviews,
       });
+      // Черновик живёт до успеха: сетевая ошибка/незадеплоенный FRI не должны
+      // съедать выбранные фото (раньше cleared draft не восстанавливался).
+      composeRef.current?.clearText();
+      clearImages();
+      setReplyTo(null);
+      setDeleteBarHeightPx(0);
       replaceOptimisticOutgoingThreadMessage({
         queryClient,
         conversationUuid,
@@ -3274,7 +3371,9 @@ export function ThreadScreen({
           {replyTo ? (
             <ChatComposeReplyBar
               reply={replyTo}
-              onDismiss={clearReplyDraft}
+              onDismiss={() => {
+                if (!sending) clearReplyDraft();
+              }}
               onLayout={(height) => setDeleteBarHeightPx(height)}
             />
           ) : null}
@@ -3299,7 +3398,7 @@ export function ThreadScreen({
             }
             onTextChange={onComposeTextChange}
             images={composeImages}
-            onRemoveImageAt={removeImageAt}
+            onRemoveImageAt={sending ? ignoreRemoveWhileSending : removeImageAt}
             onPickImages={() => void onPickImages()}
             hasPendingImages={hasPendingPrepare}
             voiceMode={voiceMode === "voice"}
@@ -3502,10 +3601,8 @@ export function ThreadScreen({
   );
 }
 
-function OverlayRouteShell() {
+function OverlayRouteShell({ conversationUuid }: { conversationUuid: string }) {
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const tabBarBottomInset = Math.max(insets.bottom, 8);
   const warmGateOwner = useMemo(() => Symbol("chat-thread-shell"), []);
   const closingRef = useRef(false);
   const shellFocusedRef = useRef(false);
@@ -3548,16 +3645,15 @@ function OverlayRouteShell() {
   useFocusEffect(
     useCallback(() => {
       shellFocusedRef.current = true;
-      applyMessagesTabBarHidden(navigation, tabBarBottomInset, true);
+      // Таб-бар прячет `MessagesTabBarGate` по маршруту — оболочка его не трогает.
       // Оболочка — экран вкладки Messages: список потерял фокус, но вкладка
       // на месте, и очередь скамьи продолжает под открытым чатом.
       setChatWarmScreenFocused(warmGateOwner, true, CHAT_WARM_THREAD_SETTLE_MS);
       return () => {
         shellFocusedRef.current = false;
         setChatWarmScreenFocused(warmGateOwner, false);
-        applyMessagesTabBarHidden(navigation, tabBarBottomInset, false);
       };
-    }, [navigation, tabBarBottomInset, warmGateOwner]),
+    }, [warmGateOwner]),
   );
   useEffect(() => {
     closingRef.current = false;
@@ -3577,6 +3673,28 @@ function OverlayRouteShell() {
     });
     return unsubscribe;
   }, [navigation]);
+
+  /**
+   * Пустая оболочка не должна переживать сам чат. Если overlay уже за краем,
+   * а прозрачный маршрут остался в стеке (сорванный pop, возврат из activity),
+   * список под ним виден, но не получает касаний — снимаем маршрут повторно.
+   * Пауза — чтобы не спорить с живой анимацией свала.
+   */
+  const chatOffEdge = useSyncExternalStore(subscribeChatPush, getChatPushOffEdge);
+  const chatExiting = useSyncExternalStore(subscribeChatPush, isChatPushExiting);
+  useEffect(() => {
+    if (!chatOffEdge || chatExiting) return;
+    const timer = setTimeout(() => {
+      if (!getChatPushOffEdge() || isChatPushExiting()) return;
+      if (!isChatPushOverlayOwner(conversationUuid)) return;
+      closingRef.current = false;
+      shellPopOnceRef.current = true;
+      disarmChatPushExitPop();
+      router.back();
+    }, STALE_SHELL_POP_MS);
+    return () => clearTimeout(timer);
+  }, [chatExiting, chatOffEdge, conversationUuid]);
+
   return null;
 }
 
@@ -3584,10 +3702,21 @@ export default function ThreadRoute() {
   useFloraTheme();
   const params = useLocalSearchParams<{ conversationUuid?: string }>();
   const conversationUuid = routeParam(params.conversationUuid);
+  /**
+   * Пока маршрут треда в стеке (оболочка парковки или полный экран), никакой
+   * аварийный reset не имеет права снимать парковку/слайд: экран остался бы
+   * прозрачным modal'ом поверх списка и съедал его тапы.
+   */
+  useLayoutEffect(() => {
+    setChatPushThreadRouteMounted(true);
+    return () => {
+      setChatPushThreadRouteMounted(false);
+    };
+  }, []);
   const overlayOwner = useSyncExternalStore(subscribeChatPush, () =>
     isChatPushOverlayOwner(conversationUuid),
   );
-  if (overlayOwner) return <OverlayRouteShell />;
+  if (overlayOwner) return <OverlayRouteShell conversationUuid={conversationUuid} />;
   return <ThreadScreen />;
 }
 

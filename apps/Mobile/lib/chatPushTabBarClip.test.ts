@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { tabBarMaskTranslateXPx, uncoveredWidthPx } from "./chatPushTabBarClip";
+import {
+  tabBarMaskProgress,
+  tabBarMaskTranslateXPx,
+  uncoveredWidthPx,
+} from "./chatPushTabBarClip";
 
 const SCREEN = 390;
 
@@ -38,5 +42,24 @@ describe("tabBarMaskTranslateXPx", () => {
 
   it("shifts the mask fully off the left edge when the chat covers", () => {
     expect(tabBarMaskTranslateXPx(1, SCREEN)).toBe(-SCREEN);
+  });
+});
+
+describe("tabBarMaskProgress", () => {
+  it("keeps the bar hidden for the whole open thread", () => {
+    // Возврат из пикера мог сбросить progress под живым тредом: бар всё равно
+    // не должен рисоваться над полем ввода.
+    expect(
+      tabBarMaskProgress({ threadOpen: true, chatProgress: 0, composeProgress: 0 }),
+    ).toBe(1);
+  });
+
+  it("follows the slide when no thread route is open", () => {
+    expect(
+      tabBarMaskProgress({ threadOpen: false, chatProgress: 0.4, composeProgress: 0 }),
+    ).toBe(0.4);
+    expect(
+      tabBarMaskProgress({ threadOpen: false, chatProgress: 0, composeProgress: 0.7 }),
+    ).toBe(0.7);
   });
 });

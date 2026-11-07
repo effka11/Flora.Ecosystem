@@ -6,11 +6,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThreadScreen } from "./[conversationUuid]";
 import {
   CHAT_PUSH_OFF_EDGE,
-  chatBenchHostRaised,
-  chatPushHostIgnoresHits,
+  chatPushThreadHost,
   layoutChatBenchSlots,
 } from "@/lib/chatListEnterMount";
-import { applyMessagesTabBarHidden, isMessagesInThread, isMessagesInThreadPath } from "@/lib/messagesTabBar";
+import { applyMessagesTabBarHidden, isMessagesThreadSurface } from "@/lib/messagesTabBar";
 import {
   chatPushProgress,
   getChatPushEnterPaint,
@@ -79,7 +78,7 @@ function MessagesTabBarGate() {
   const pathname = usePathname();
   const holding = useSyncExternalStore(subscribeChatPush, getChatPushHolding);
   const inThread =
-    (isMessagesInThread(segments) || isMessagesInThreadPath(pathname)) && !holding;
+    isMessagesThreadSurface({ segments, pathname }) && !holding;
 
   useLayoutEffect(() => {
     applyMessagesTabBarHidden(navigation, tabBarBottomInset, inThread);
@@ -95,6 +94,14 @@ function ParkedChatHost() {
   const exiting = useSyncExternalStore(subscribeChatPush, getChatPushExiting);
   const enterPaint = useSyncExternalStore(subscribeChatPush, getChatPushEnterPaint);
   const bench = useSyncExternalStore(subscribeChatWarm, getChatWarmBench);
+  const segments = useSegments();
+  const pathname = usePathname();
+  /**
+   * Маршрут треда в стеке и выход не идёт: чат — текущая сцена. Пока он жив,
+   * сброшенный извне progress не имеет права опустить хост под список.
+   */
+  const threadOpen =
+    !exiting && isMessagesThreadSurface({ segments, pathname });
   useAnimatedReaction(
     () => chatPushProgress.value <= CHAT_PUSH_OFF_EDGE,
     (off, prev) => {
@@ -111,14 +118,14 @@ function ParkedChatHost() {
       ? [...bench, { id: activeId, params: parked, attempt: 0, closed: false }]
       : bench;
   const activeSlot = activeId ? slots.find((slot) => slot.id === activeId) : undefined;
-  const hostRaised = chatBenchHostRaised({
+  const { raised: hostRaised, ignoreHits } = chatPushThreadHost({
+    threadOpen,
     holding,
     offEdge,
     exiting,
     enterPaint,
     carpetDown: activeSlot?.closed ?? true,
   });
-  const ignoreHits = !hostRaised || chatPushHostIgnoresHits({ holding, offEdge });
   // Замер — один верхний слот без translateX, под списком. Пока палец держит
   // незакрытый слот, хост не поднимается и кадр замера остаётся у него.
   // Закрытый активный слот при поднятом хосте до runEnter стоит за краем.
@@ -145,6 +152,7 @@ function ParkedChatHost() {
               bench={!active}
               attempt={slot.attempt}
               measureFrame={frame.layer === "measure"}
+              threadSurfaced={threadOpen && active}
             />
           </View>
         );
@@ -158,6 +166,7 @@ const ParkedThreadSlot = memo(function ParkedThreadSlot({
   bench,
   attempt,
   measureFrame,
+  threadSurfaced,
 }: {
   params: NonNullable<ReturnType<typeof getChatPushOverlay>>;
   bench: boolean;
@@ -165,6 +174,8 @@ const ParkedThreadSlot = memo(function ParkedThreadSlot({
   attempt: number;
   /** Единственный слот в кадре замера: без translateX и без соседа поверх. */
   measureFrame: boolean;
+  /** Маршрут треда в стеке: активный слот прибит к кадру, слайд не играет. */
+  threadSurfaced: boolean;
 }) {
   return (
     <ThreadScreen
@@ -172,6 +183,7 @@ const ParkedThreadSlot = memo(function ParkedThreadSlot({
       bench={bench}
       benchAttempt={attempt}
       measureFrame={measureFrame}
+      threadSurfaced={threadSurfaced}
     />
   );
 });
