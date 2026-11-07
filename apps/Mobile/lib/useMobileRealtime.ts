@@ -8,6 +8,8 @@ import {
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import { notifyReadChanged } from "@/lib/readEvents";
+import { getQueryClientRef } from "@/lib/queryClientRef";
+import { markConversationLastMessageReadInList } from "@/lib/messageThreadOutgoing";
 import { dismissSocialPushNotifications } from "@/lib/pushNotifications";
 import { handleMessageRealtime, handleNotificationRealtime } from "@/lib/realtimeSync";
 import { notifyTypingChanged } from "@/lib/typingEvents";
@@ -44,6 +46,8 @@ export function useMobileRealtime(enabled: boolean): void {
       },
       onRead: (signal) => {
         notifyReadChanged(signal);
+        const queryClient = getQueryClientRef();
+        if (queryClient) markConversationLastMessageReadInList(queryClient, signal.conversationUuid);
       },
       onOpen: () => {
         handleMessageRealtime(null);

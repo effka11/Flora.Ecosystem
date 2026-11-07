@@ -90,6 +90,7 @@ export function applyOutgoingToConversations(
       patch.lastMessageContent !== undefined ? patch.lastMessageContent : null,
     lastMessageAt: patch.createdAt,
     lastMessageIsFromMe: true,
+    lastMessageIsRead: false,
   };
   return [updated, ...items.slice(0, index), ...items.slice(index + 1)];
 }
@@ -109,9 +110,60 @@ export function applyIncomingToConversations(
     ...current,
     lastMessageAt: patch.sentAt,
     lastMessageIsFromMe: fromMe,
+    lastMessageIsRead: false,
     unreadCount: fromMe ? current.unreadCount : current.unreadCount + 1,
   };
   return [updated, ...items.slice(0, index), ...items.slice(index + 1)];
+}
+
+/**
+ * Live read-receipt: собеседник прочитал чат — последнее исходящее в строке
+ * списка становится прочитанным (тот же смысл, что `markOutgoingMessagesReadInCache`).
+ */
+export function markConversationLastMessageReadInList(
+  queryClient: QueryClient,
+  conversationUuid: string,
+): void {
+  queryClient.setQueryData<MsgConversationsPage>(["conversations"], (old) => {
+    if (!old) return old;
+    const index = old.items.findIndex((item) =>
+      uuidEqual(item.conversationUuid, conversationUuid),
+    );
+    if (index === -1) return old;
+    const row = old.items[index];
+    if (!row.lastMessageIsFromMe || row.lastMessageIsRead) return old;
+    const items = [...old.items];
+    items[index] = { ...row, lastMessageIsRead: true };
+    return { ...old, items };
+  });
+}
+
+/**
+ * Свежая страница треда — тот же серверный `is_read`, что у галочек в чате.
+ * Переносим его в строку списка, если она всё ещё про то же последнее сообщение.
+ * Только вверх: `is_read` монотонен, поздняя страница со старым `false` не должна
+ * откатывать уже известное прочтение.
+ */
+function syncConversationListLastRead(
+  queryClient: QueryClient | undefined,
+  conversationUuid: string,
+  items: readonly MsgMessageDto[],
+): void {
+  if (!queryClient) return;
+  const newest = items[items.length - 1];
+  if (newest == null || !newest.isRead) return;
+  queryClient.setQueryData<MsgConversationsPage>(["conversations"], (old) => {
+    if (!old) return old;
+    const index = old.items.findIndex((item) =>
+      uuidEqual(item.conversationUuid, conversationUuid),
+    );
+    if (index === -1) return old;
+    const row = old.items[index];
+    if (row.lastMessageAt !== newest.createdAt || row.lastMessageIsRead) return old;
+    const next = [...old.items];
+    next[index] = { ...row, lastMessageIsRead: true };
+    return { ...old, items: next };
+  });
 }
 
 function rowFromPlaintext(
@@ -165,6 +217,14 @@ function invalidateConversationDecryptArray(conversationUuid: string): void {
 
 export function getPendingOutgoing(conversationUuid: string): PendingOutgoingEntry[] {
   return pendingByConversation.get(normConv(conversationUuid)) ?? [];
+}
+
+/** Последнее сообщение списка — оптимистичное исходящее без server ACK. */
+export function isOutgoingMessagePending(
+  conversationUuid: string,
+  createdAt: string,
+): boolean {
+  return getPendingOutgoing(conversationUuid).some((entry) => entry.dto.createdAt === createdAt);
 }
 
 export function clearPendingOutgoing(conversationUuid: string): void {
@@ -249,6 +309,7 @@ export function applyMessagesPageToCaches(params: {
     nextCursor: params.page.nextCursor,
   };
   messageThreadCache.set(params.conversationUuid, next.items);
+  syncConversationListLastRead(params.queryClient, params.conversationUuid, next.items);
   if (params.queryClient) {
     params.queryClient.setQueryData(
       messagesQueryKey(params.conversationUuid, params.otherUserUuid),

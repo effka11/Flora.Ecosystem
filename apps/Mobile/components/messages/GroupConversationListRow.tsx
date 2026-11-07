@@ -5,7 +5,9 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
+import { conversationLastMessageState } from "@/lib/messageDeliveryState";
 import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
 import { warmChatOpenThreadAtPressIn } from "@/lib/chatOpenLayoutWarm";
 import { markChatOpenPark, markChatOpenTap } from "@/lib/chatOpenTrace";
@@ -57,6 +59,12 @@ export function GroupConversationListRow({
     preview: preview.trim().length > 0 ? preview : group.lastMessagePreview ?? "",
     isFromMe: group.lastMessageIsFromMe,
     senderDisplayName: group.lastMessageSenderDisplayName,
+  });
+  // У групп per-message isRead нет (как в пузырях): своё последнее — всегда «отправлено».
+  const receiptState = conversationLastMessageState({
+    isFromMe: group.lastMessageIsFromMe,
+    isRead: false,
+    isSending: false,
   });
 
   const threadParams = {
@@ -160,9 +168,18 @@ export function GroupConversationListRow({
           <Text style={styles.name} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={styles.preview} numberOfLines={1}>
-            {previewText}
-          </Text>
+          <View style={[styles.previewRow, receiptState != null && styles.previewRowWithReceipt]}>
+            <Text style={styles.preview} numberOfLines={1}>
+              {previewText}
+            </Text>
+            {receiptState != null ? (
+              <ChatMessageReadReceipt
+                state={receiptState}
+                sentColor={floraColors.gray}
+                style={styles.previewReceipt}
+              />
+            ) : null}
+          </View>
         </View>
       </View>
 
@@ -225,12 +242,26 @@ const styles = liveGridStyles(() => StyleSheet.create({
     letterSpacing: tracking(0.45),
     lineHeight: 4 * floraSpacing.gridFine,
   },
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+  /** Центр слота галочки — вертикаль «+»/правой папки (см. ConversationListRow). */
+  previewRowWithReceipt: {
+    paddingRight: sPx(3.5),
+  },
   preview: {
+    flexShrink: 1,
+    minWidth: 0,
     color: floraColors.gray,
     fontSize: kegl(15),
     fontWeight: "300",
     letterSpacing: tracking(0.45),
     lineHeight: 4 * floraSpacing.gridFine,
+  },
+  previewReceipt: {
+    marginLeft: sPx(6),
   },
   trailing: {
     width: HEADER_TRAILING_ICON_SLOT(),
