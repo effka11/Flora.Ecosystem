@@ -72,6 +72,7 @@ $env:CI = "1"
 
 Push-Location $mobile
 try {
+    Enter-FloraAndroidWorkspaceLock $mobile
     Write-Host "expo prebuild (android, development variant) ..."
     Invoke-ExpoAndroidPrebuildClean $mobile
     # prebuild /MIR пересоздаёт android/ и стирает libs/*.aar — вернуть до Gradle.
@@ -89,6 +90,7 @@ finally {
     } else {
         $env:CI = $previousCi
     }
+    Exit-FloraAndroidWorkspaceLock
     Pop-Location
 }
 

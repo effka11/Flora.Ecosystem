@@ -5,6 +5,9 @@
 #>
 Set-StrictMode -Version Latest
 
+# Held by Enter-FloraAndroidWorkspaceLock; dot-sourced into the caller scope.
+$script:FloraAndroidWorkspaceLock = $null
+
 function Test-AndroidSdkPath([string]$path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return $false }
     if ($path.Length -lt 4) { return $false }
@@ -300,6 +303,63 @@ function Invoke-FromShortRoot([string]$longRoot, [scriptblock]$Action) {
     finally {
         Pop-Location
         if ($mapped) { subst $drive /d | Out-Null }
+    }
+}
+
+function Enter-FloraAndroidWorkspaceLock {
+    param([string]$MobileDir)
+
+    if ($script:FloraAndroidWorkspaceLock) { return }
+
+    $lockDir = Join-Path $env:LOCALAPPDATA "Flora"
+    New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+    $lockPath = Join-Path $lockDir "android-workspace.lock"
+
+    try {
+        $stream = [System.IO.File]::Open(
+            $lockPath,
+            [System.IO.FileMode]::OpenOrCreate,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+    }
+    catch {
+        throw @"
+Another Flora Android build is already using $MobileDir\android.
+Wait for it to finish (or stop it), then retry.
+Lock file: $lockPath
+$($_.Exception.Message)
+"@
+    }
+
+    $script:FloraAndroidWorkspaceLock = $stream
+}
+
+function Exit-FloraAndroidWorkspaceLock {
+    if (-not $script:FloraAndroidWorkspaceLock) { return }
+    $stream = $script:FloraAndroidWorkspaceLock
+    $script:FloraAndroidWorkspaceLock = $null
+    $stream.Dispose()
+}
+
+function Assert-FloraAndroidReleaseProject([string]$AndroidDir) {
+    $gradle = Join-Path $AndroidDir "app\build.gradle"
+    if (-not (Test-Path -LiteralPath $gradle)) {
+        throw "Missing $gradle. Re-run the release so android_gen is synced into android/."
+    }
+
+    $content = Get-Content -LiteralPath $gradle -Raw
+    if ($content -match "social\.flora\.mobile\.dev") {
+        throw @"
+apps/Mobile/android is a Flora Dev project (social.flora.mobile.dev).
+A dev prebuild replaced the release project during the build. Re-run the release APK task.
+"@
+    }
+    if ($content -notmatch "social\.flora\.mobile") {
+        throw "apps/Mobile/android is not the Flora release project (expected social.flora.mobile)."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $AndroidDir ".flora-build-mode"))) {
+        throw "apps/Mobile/android has no .flora-build-mode marker; it was not produced by the release prebuild. Re-run the release APK task."
     }
 }
 

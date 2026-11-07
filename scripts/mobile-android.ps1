@@ -14,9 +14,11 @@ Ensure-FfmpegAndroid $root $mobile
 Push-Location $mobile
 try {
     $env:CI = "1"
+    Enter-FloraAndroidWorkspaceLock $mobile
     npm run android
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
+    Exit-FloraAndroidWorkspaceLock
     Pop-Location
 }
