@@ -18,6 +18,7 @@ export type ComposeMode = "text" | "voice";
 export type DraftImage = {
   id: string;
   sourceFile: File;
+  /** URL маленького превью (появляется после подготовки); пусто — ещё готовится. */
   objectUrl: string;
   preparing: boolean;
 };
@@ -62,7 +63,9 @@ export function useMessageComposeDraft() {
   useEffect(
     () => () => {
       if (voiceRef.current) URL.revokeObjectURL(voiceRef.current.objectUrl);
-      for (const image of imagesRef.current) URL.revokeObjectURL(image.objectUrl);
+      for (const image of imagesRef.current) {
+        if (image.objectUrl) URL.revokeObjectURL(image.objectUrl);
+      }
       for (const video of videosRef.current) URL.revokeObjectURL(video.objectUrl);
     },
     [],
@@ -117,19 +120,28 @@ export function useMessageComposeDraft() {
       const draft: DraftImage = {
         id,
         sourceFile: file,
-        objectUrl: URL.createObjectURL(file),
+        objectUrl: "",
         preparing: true,
       };
       void scheduleMessageImagePrepare(id, file)
-        .then(() => {
-          setImages((current) =>
-            current.map((image) => (image.id === id ? { ...image, preparing: false } : image)),
-          );
+        .then((prepared) => {
+          const previewUrl = URL.createObjectURL(prepared.previewBlob);
+          setImages((current) => {
+            const item = current.find((image) => image.id === id);
+            if (!item) {
+              URL.revokeObjectURL(previewUrl);
+              return current;
+            }
+            if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+            return current.map((image) =>
+              image.id === id ? { ...image, objectUrl: previewUrl, preparing: false } : image,
+            );
+          });
         })
         .catch(() => {
           setImages((current) => {
             const item = current.find((image) => image.id === id);
-            if (item) URL.revokeObjectURL(item.objectUrl);
+            if (item?.objectUrl) URL.revokeObjectURL(item.objectUrl);
             return current.filter((image) => image.id !== id);
           });
         });
@@ -152,7 +164,7 @@ export function useMessageComposeDraft() {
       const removed = prev[index];
       if (removed) {
         cancelMessageImagePrepare(removed.id);
-        URL.revokeObjectURL(removed.objectUrl);
+        if (removed.objectUrl) URL.revokeObjectURL(removed.objectUrl);
       }
       return prev.filter((_, i) => i !== index);
     });
@@ -162,7 +174,7 @@ export function useMessageComposeDraft() {
     setImages((prev) => {
       for (const image of prev) {
         cancelMessageImagePrepare(image.id);
-        URL.revokeObjectURL(image.objectUrl);
+        if (image.objectUrl) URL.revokeObjectURL(image.objectUrl);
       }
       return [];
     });
