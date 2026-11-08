@@ -355,12 +355,15 @@ export function resetChatPushProgress(): void {
 
 /**
  * Ремонт поверхности треда: маршрут открыт, экран уже стоит в кадре
- * (`surfacePinned`), а progress сбросили снаружи (возврат из activity).
+ * (`surfacePinned`), а progress сбросили снаружи (возврат из activity) или
+ * анимация входа потерялась вместе с колбэком `withTiming`.
  * Бар, параллакс списка и хиты читают progress — возвращаем 1 и публикуем
- * снимок. Парк и идущий слайд (`driven`) не трогаем.
+ * снимок. Взведённый `driven` снимаем: иначе защёлка ленты не откроется.
+ * Парк и идущий выход не трогаем.
  */
 export function repairChatPushSurface(): void {
-  if (drivenRef?.value) return;
+  if (chatPush.isExiting()) return;
+  if (drivenRef?.value) drivenRef.value = false;
   cancelAnimation(chatPush.progress);
   chatPush.progress.value = 1;
   exitOffEdge = false;

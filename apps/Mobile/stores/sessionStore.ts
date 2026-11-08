@@ -10,6 +10,8 @@ import { create } from "zustand";
 import { clearSecurePushMaterial } from "flora-secure-push";
 import { mobileFscpKeyStorage } from "@/lib/fscp/storage";
 import { getQueryClientRef } from "@/lib/queryClientRef";
+import { clearChatPickPending } from "@/lib/chatPickPending";
+import { forgetChatSurface } from "@/lib/chatSurfaceRecord";
 import { mobileSessionStore, resolveApiBaseUrl } from "@/lib/session";
 import {
   createSessionController,
@@ -134,6 +136,10 @@ mobileSessionController.subscribe((next) => {
     clearAllPendingOutgoing();
     resetBirthTracking();
     sharedPresenceStore.clear();
+    // Запись поверхности и метка пикера — чужие маршруты и uuid: на новом
+    // аккаунте они не должны восстанавливаться.
+    forgetChatSurface();
+    clearChatPickPending();
   }
 });
 
