@@ -24,6 +24,8 @@ const LOGO_GREEN = "#a1cd87";
  */
 const ICON_DARK = { plate: BRAND_BLACK, ink: BRAND_SILVER };
 const ICON_LIGHT = { plate: LIGHT_PAPER, ink: BRAND_BLACK };
+/** Web tab mark: light-theme paper ink on a transparent field (no plate). */
+const TAB_INK = LIGHT_PAPER;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mobile = join(root, "apps", "Mobile");
@@ -340,7 +342,11 @@ async function main() {
   const logoSource = await readFile(logoSvg, "utf8");
   const bare = withoutLogoPlate(logoSource);
   await writeFile(join(webPublic, "logo-mark.svg"), bare);
-  const tabSvg = bare.replace(/viewBox="[^"]+"/, `viewBox="${tabViewBox(await markBounds())}"`);
+  // The tab icon keeps the mark but swaps the source green for the light-theme
+  // paper; the browser chrome is its field, so it stays transparent.
+  const tabSvg = bare
+    .replaceAll(LOGO_GREEN, TAB_INK)
+    .replace(/viewBox="[^"]+"/, `viewBox="${tabViewBox(await markBounds())}"`);
   await writeFile(join(webPublic, "icon.svg"), tabSvg);
   const tabSvgBuf = Buffer.from(tabSvg);
   const tabPng = (size) =>
