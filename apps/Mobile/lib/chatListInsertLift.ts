@@ -19,6 +19,14 @@ export {
 
 /** Общий тайминг подъёма ленты при появлении сообщения у якоря. */
 export const CHAT_INSERT_LIFT_MS = 220;
+/**
+ * Запас к таймингу страховки: `withTiming` — односторонний UI-эффект, и его
+ * завершение может потеряться в activity-переходе (системный пикер).
+ */
+const CHAT_INSERT_LIFT_GUARD_MS = 140;
+
+/** Поколение подъёма: поздняя страховка не сбрасывает более новый подъём. */
+let insertLiftEpoch = 0;
 
 const LIFT_EASING = Easing.out(Easing.cubic);
 
@@ -50,6 +58,7 @@ export function playChatListInsertLift(
     return;
   }
 
+  const epoch = ++insertLiftEpoch;
   const hold = holdAvatarSv;
   runOnUI(() => {
     "worklet";
@@ -64,4 +73,19 @@ export function playChatListInsertLift(
       hold.value = withTiming(0, timing);
     }
   })();
+  /**
+   * Страховка возврата в покой. Подъём — временный counter-lift, а не layout:
+   * застывшее значение нельзя оставлять даже на одном переходе (фото-пузырь
+   * поднимает ленту на ~220 px и увёл бы её из кадра). Таймер живёт на JS и
+   * переживает паузу activity; более новый подъём отменяет старую страховку.
+   */
+  setTimeout(() => {
+    if (epoch !== insertLiftEpoch) return;
+    cancelAnimation(insertLiftSv);
+    insertLiftSv.value = 0;
+    if (hold) {
+      cancelAnimation(hold);
+      hold.value = 0;
+    }
+  }, CHAT_INSERT_LIFT_MS + CHAT_INSERT_LIFT_GUARD_MS);
 }

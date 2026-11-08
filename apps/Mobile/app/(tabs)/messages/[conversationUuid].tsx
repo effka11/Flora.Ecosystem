@@ -136,6 +136,8 @@ import {
   getChatPushDriven,
   getChatPushEnterGeneration,
   getChatPushHolding,
+  getChatPushOffEdge,
+  getChatPushOverlay,
   getChatPushSliding,
   isChatPushEnterArmed,
   isChatPushExiting,
@@ -149,7 +151,6 @@ import {
   completeChatPushExitVisual,
   disarmChatPushExitPop,
   getChatPushParkPhase,
-  getChatPushOffEdge,
   getChatPushShellInStack,
   isChatPushExitPopArmed,
   isChatPushThreadRouteMounted,
@@ -167,6 +168,17 @@ import {
 } from "@/lib/chatPushTransition";
 import { setActiveMessageThread } from "@/lib/activeMessageThread";
 import {
+  abandonChatPickActivity,
+  beginChatPickActivity,
+  CHAT_PICK_ACTIVITY_STUCK_MS,
+  endChatPickActivity,
+  isChatPickActivityActive,
+  runAfterChatPickActivity,
+} from "@/lib/chatPickActivity";
+import { buildChatSurfaceRecord } from "@/lib/chatSurfaceRecordCore";
+import { forgetChatSurface, syncChatSurface } from "@/lib/chatSurfaceRecord";
+import { clearChatPickPending, markChatPickPending } from "@/lib/chatPickPending";
+import {
   CHAT_PUSH_OFF_EDGE,
   CHAT_WARM_THREAD_SETTLE_MS,
   chatBenchPromoteKeepsReveal,
@@ -183,6 +195,12 @@ import {
   warmLayoutEffectMayReveal,
   warmLayoutRevealAction,
 } from "@/lib/chatListEnterMount";
+import {
+  CHAT_LIST_MOUNT_WATCHDOG_MS,
+  CHAT_SURFACE_REPAIR_WATCHDOG_MS,
+  shouldForceChatListMount,
+  shouldForceChatSurfaceOpen,
+} from "@/lib/chatThreadVisibility";
 import { createScrollBusyTracker } from "@/lib/chatWarmAssemblyGate";
 import {
   diagnoseChatWarmOpen,
@@ -557,6 +575,8 @@ export function ThreadScreen({
     onListLoad,
     onListContentSizeChange,
     listRevealed,
+    enterCoverVisible,
+    recoverSurface,
     finishEnterTransition,
     composeBaselinePx,
     emojiPanelHeightPx,
@@ -594,6 +614,14 @@ export function ThreadScreen({
   kgaOffsetRef.current = kgaOffsetPx;
 
   const composeRef = useRef<ChatComposeFieldHandle>(null);
+  /** Повторный тап по «+» не должен открыть второй пикер поверх первого. */
+  const pickerBusyRef = useRef(false);
+  /** Поколение пикера: поздний результат прошлого не трогает состояние нового. */
+  const pickGenerationRef = useRef(0);
+  /** Страховка потерянного activity-result: «+» не остаётся мёртвым навсегда. */
+  const pickStuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Видимость ленты на момент запуска пикера — что восстанавливать на возврате. */
+  const listRevealedAtPickRef = useRef(false);
   const moreBtnRef = useRef<View>(null);
   const dockFooterRef = useAnimatedRef<Reanimated.View>();
   const chatHeaderWrapRef = useRef<View>(null);
@@ -988,6 +1016,34 @@ export function ThreadScreen({
     if (chatPushDriven.value) return;
     repairChatPushSurface();
   }, [chatPushDriven, chatPushOffEdge, surfaceOpen]);
+  /**
+   * Страховка поверхности: анимация входа/сброс прогресса могли потеряться в
+   * activity-переходе (пикер фото) и оставить `driven` взведённым навсегда.
+   * Тогда немедленный ремонт выше молчит, а маршрут треда уже открыт —
+   * проверяем фактический край ещё раз с задержкой и возвращаем кадр силой.
+   * Идущий слайд успевает уйти с края за эти 320 мс и условие не проходит.
+   */
+  const surfaceOpenRef = useRef(surfaceOpen);
+  surfaceOpenRef.current = surfaceOpen;
+  useLayoutEffect(() => {
+    if (!surfaceOpen || !chatPushOffEdge) return;
+    const timer = setTimeout(() => {
+      if (
+        !shouldForceChatSurfaceOpen({
+          surfaceOpen: surfaceOpenRef.current,
+          offEdge: getChatPushOffEdge(),
+          exiting: isChatPushExiting(),
+        })
+      ) {
+        return;
+      }
+      if (__DEV__) {
+        console.debug("[chat-push] surface-watchdog: поверхность открыта, progress за краем");
+      }
+      repairChatPushSurface();
+    }, CHAT_SURFACE_REPAIR_WATCHDOG_MS);
+    return () => clearTimeout(timer);
+  }, [chatPushOffEdge, surfaceOpen]);
 
   /**
    * В парковке FlashList монтируется сразу: коммит пузырей идёт, пока экран
@@ -1082,6 +1138,31 @@ export function ThreadScreen({
     if (!atBottomRef.current) return;
     pinListToBottom(false);
   }, [conversationUuid, listMounted, pinListToBottom]);
+  /**
+   * Страховка защёлки ленты: маршрут открыт, а монтирование так и не
+   * открылось (реакция на progress = 1 потерялась в activity-переходе).
+   * Данные к этому моменту готовы — монтируем список без ожидания
+   * следующего события, иначе пузыри не появятся до перезапуска.
+   */
+  useEffect(() => {
+    if (!shouldForceChatListMount({ surfaceOpen, listMounted })) return;
+    const timer = setTimeout(() => {
+      if (
+        !shouldForceChatListMount({
+          surfaceOpen: surfaceOpenRef.current,
+          listMounted: listEnterSettledRef.current,
+        })
+      ) {
+        return;
+      }
+      if (__DEV__) {
+        console.debug("[chat-push] mount-watchdog: лента не смонтировалась — открываем защёлку");
+      }
+      listEnterSettledRef.current = true;
+      setListMountEpoch((epoch) => epoch + 1);
+    }, CHAT_LIST_MOUNT_WATCHDOG_MS);
+    return () => clearTimeout(timer);
+  }, [listMounted, surfaceOpen]);
 
   /**
    * Назад — зеркало входа: перехватываем pop (кнопка, системный back
@@ -2603,12 +2684,54 @@ export function ThreadScreen({
     ],
   );
 
+  /**
+   * Пикер уходит в чужое activity — экран может быть размонтирован (слот
+   * скамьи), и страховка не должна стрелять по мёртвому дереву.
+   */
+  useEffect(
+    () => () => {
+      if (pickStuckTimerRef.current != null) {
+        clearTimeout(pickStuckTimerRef.current);
+        pickStuckTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   const onPickImages = useCallback(async () => {
     if (!canSend()) return;
+    // Второй тап по «+», пока пикер уже открывается, — это второй запуск
+    // activity и гонка результатов; на возврате она читается как зависание.
+    if (pickerBusyRef.current) return;
     // Пикер — отдельная activity. Запускать её в середине входного слайда
     // нельзя: пауза activity прерывает withTiming входа, маршрут не пушится,
-    // и тред остаётся в фазе playing с недоехавшим progress.
-    if (chatPushProgress.value < 1) return;
+    // и тред остаётся в фазе playing с недоехавшим progress. Проверяем именно
+    // идущий слайд: сброшенный извне progress при открытом маршруте (возврат
+    // из activity, полный экран без парковки) — не повод глушить «+» навсегда.
+    if (getChatPushSliding() && chatPushProgress.value < 1) return;
+    pickerBusyRef.current = true;
+    const pickGeneration = pickGenerationRef.current + 1;
+    pickGenerationRef.current = pickGeneration;
+    // Показанную ленту пикер возвращает уже видимой: если после возврата она
+    // окажется скрытой, это потерянный кадр, а не новый тред. Непоказанный
+    // тред ведёт обычный путь показа со своим watchdog'ом.
+    listRevealedAtPickRef.current = listRevealed;
+    // Пока пикер на экране, аварийные сбросы поверхности (фокус списка,
+    // stale-shell pop) молчат: возврат не должен застать снятый маршрут.
+    beginChatPickActivity();
+    // Метка на диск: если система выгрузит процесс, холодный старт вернёт
+    // этот чат по ней (см. ChatSurfaceRestorer).
+    markChatPickPending(conversationUuid);
+    // Страховка от потерянного activity-result: кнопка «+» не должна остаться
+    // мёртвой до перезапуска приложения.
+    pickStuckTimerRef.current = setTimeout(() => {
+      pickStuckTimerRef.current = null;
+      if (pickGenerationRef.current !== pickGeneration) return;
+      pickerBusyRef.current = false;
+      clearChatPickPending();
+      abandonChatPickActivity();
+      recoverSurface(listRevealedAtPickRef.current);
+    }, CHAT_PICK_ACTIVITY_STUCK_MS);
     // Гасим IME (и снимаем фокус с поля), панель до запуска пикера, иначе
     // окно и клавиатура возвращаются в рассогласованном состоянии и док
     // остаётся ниже своего места.
@@ -2623,13 +2746,41 @@ export function ThreadScreen({
       // объяснения — показываем причину обычным Alert.
       Alert.alert("Фото", err instanceof Error ? err.message : "Не удалось открыть галерею.");
     } finally {
+      if (pickStuckTimerRef.current != null) {
+        clearTimeout(pickStuckTimerRef.current);
+        pickStuckTimerRef.current = null;
+      }
+      // Результат прошлого пикера, чью страховку уже снял таймер: его возврат
+      // не имеет права снимать флаги нового пикера.
+      if (pickGenerationRef.current !== pickGeneration) return;
+      // Пикер вернулся: метка больше не нужна, холодному старту восстанавливать
+      // нечего.
+      clearChatPickPending();
+      pickerBusyRef.current = false;
       // Возврат из activity: финальный move IME мог не дойти, а система могла
       // восстановить клавиатуру. Повторно гасим панель и IME и ставим док в
       // idle — иначе он висит под клавиатурой до следующей ручной анимации.
       closeEmoji();
       settleKeyboardIdle();
+      // Поверхность треда могла быть сброшена, пока activity была в фоне.
+      // Маршрут чинит ChatSurfaceRestorer; здесь — progress/хиты и показ ленты:
+      // UI-цикл reveal в паузе мог не доехать и оставить пузыри под ковром.
+      if (getChatPushOverlay() != null && !isChatPushExiting()) repairChatPushSurface();
+      recoverSurface(listRevealedAtPickRef.current);
+      // Последним: отложенный выход из чата (404/403 за время пикера) обязан
+      // идти после ремонта поверхности.
+      endChatPickActivity();
     }
-  }, [canSend, closeEmoji, dismissKeyboard, pickImages, settleKeyboardIdle]);
+  }, [
+    canSend,
+    closeEmoji,
+    conversationUuid,
+    dismissKeyboard,
+    listRevealed,
+    pickImages,
+    recoverSurface,
+    settleKeyboardIdle,
+  ]);
 
   // Голосовой режим закрывает панель эмодзи (closeEmoji); клавиатуру явно не трогаем.
   // Инпут остаётся смонтированным и сфокусированным (ChatComposeField прячет его).
@@ -3342,10 +3493,12 @@ export function ThreadScreen({
           проявляется, а не вспыхивает. Лента под ним уже видима и стоит на
           якоре, поэтому движения нет — только проявление.
         */}
-        <Reanimated.View
-          pointerEvents="none"
-          style={[styles.listFill, styles.listEnterCover, listEnterCoverStyle]}
-        />
+        {enterCoverVisible ? (
+          <Reanimated.View
+            pointerEvents="none"
+            style={[styles.listFill, styles.listEnterCover, listEnterCoverStyle]}
+          />
+        ) : null}
 
         {/*
           Заглушка — слой над ковром (спиннер должен быть виден на нём), не
@@ -3714,6 +3867,19 @@ function OverlayRouteShell({ conversationUuid }: { conversationUuid: string }) {
   }, [navigation]);
 
   /**
+   * Маршрут треда мог быть запушен не хореографией парка (пуш уведомления,
+   * диплинк, восстановление поверхности), когда парк того же чата остался за
+   * краем от прошлого выхода. Тогда экран — текущая сцена, а не остаток
+   * выхода: возвращаем progress в кадр, иначе stale-pop ниже снимает живой
+   * маршрут через полсекунды — «выбросило в список чатов» при открытии.
+   */
+  useEffect(() => {
+    if (isChatPushExiting()) return;
+    if (!getChatPushOffEdge()) return;
+    repairChatPushSurface();
+  }, []);
+
+  /**
    * Пустая оболочка не должна переживать сам чат. Если overlay уже за краем,
    * а прозрачный маршрут остался в стеке (сорванный pop, возврат из activity),
    * список под ним виден, но не получает касаний — снимаем маршрут повторно.
@@ -3726,10 +3892,15 @@ function OverlayRouteShell({ conversationUuid }: { conversationUuid: string }) {
     const timer = setTimeout(() => {
       if (!getChatPushOffEdge() || isChatPushExiting()) return;
       if (!isChatPushOverlayOwner(conversationUuid)) return;
+      // Пикер — отдельная activity: back под ним исполнится невидимо, и
+      // пользователь вернётся из галереи в список чатов. Решение о выходе
+      // принимается после возврата (ChatSurfaceRestorer).
+      if (isChatPickActivityActive()) return;
+      if (AppState.currentState !== "active") return;
       closingRef.current = false;
       shellPopOnceRef.current = true;
       disarmChatPushExitPop();
-      router.back();
+      runAfterChatPickActivity(() => router.back());
     }, STALE_SHELL_POP_MS);
     return () => clearTimeout(timer);
   }, [chatExiting, chatOffEdge, conversationUuid]);
@@ -3739,8 +3910,64 @@ function OverlayRouteShell({ conversationUuid }: { conversationUuid: string }) {
 
 export default function ThreadRoute() {
   useFloraTheme();
-  const params = useLocalSearchParams<{ conversationUuid?: string }>();
+  const params = useLocalSearchParams<{
+    conversationUuid?: string;
+    kind?: string;
+    title?: string;
+    otherUserUuid?: string;
+    otherDisplayName?: string;
+    otherUsername?: string;
+    otherAvatarUuid?: string;
+    otherAccountBlocked?: string;
+  }>();
   const conversationUuid = routeParam(params.conversationUuid);
+  const paramKind = routeParam(params.kind);
+  const paramTitle = routeParam(params.title);
+  const paramOtherUserUuid = routeParam(params.otherUserUuid);
+  const paramOtherDisplayName = routeParam(params.otherDisplayName);
+  const paramOtherUsername = routeParam(params.otherUsername);
+  const paramOtherAvatarUuid = routeParam(params.otherAvatarUuid);
+  const paramOtherAccountBlocked = routeParam(params.otherAccountBlocked);
+  /**
+   * Запись поверхности: какой чат открыт. Живёт на маршруте, а не на экране:
+   * она обязана пережить смерть процесса, но исчезнуть при намеренном выходе.
+   *
+   * Пишется на фокусе (стек мог держать другой чат сверху) и стирается на
+   * блюре — pop, архив, удаление, выход из группы. Уход в фон и смерть процесса
+   * до cleanup не доходят, поэтому возврат из пикера восстанавливает именно этот
+   * чат. Хранятся только параметры маршрута: без текстов и ключей.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const record = buildChatSurfaceRecord({
+        conversationUuid,
+        kind: paramKind || undefined,
+        title: paramTitle || undefined,
+        otherUserUuid: paramOtherUserUuid || undefined,
+        otherDisplayName: paramOtherDisplayName || undefined,
+        otherUsername: paramOtherUsername || undefined,
+        otherAvatarUuid: paramOtherAvatarUuid || undefined,
+        otherAccountBlocked: paramOtherAccountBlocked || undefined,
+      });
+      if (record != null) syncChatSurface(record);
+      return () => {
+        // Blur в фоне — это pop под системной activity (пикер фото): маршрут
+        // снят без действия пользователя, и запись нужна возврату. Намеренный
+        // выход (back, архив, удаление) случается на активном приложении.
+        if (AppState.currentState !== "active") return;
+        if (conversationUuid) forgetChatSurface(conversationUuid);
+      };
+    }, [
+      conversationUuid,
+      paramKind,
+      paramOtherAccountBlocked,
+      paramOtherAvatarUuid,
+      paramOtherDisplayName,
+      paramOtherUserUuid,
+      paramOtherUsername,
+      paramTitle,
+    ]),
+  );
   /**
    * Пока маршрут треда в стеке (оболочка парковки или полный экран), никакой
    * аварийный reset не имеет права снимать парковку/слайд: экран остался бы

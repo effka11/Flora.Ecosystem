@@ -1,4 +1,5 @@
 import { renderChatPushTabBar } from "@/components/ChatPushTabBar";
+import { ChatSurfaceRestorer } from "@/components/ChatSurfaceRestorer";
 import { FloraTabBarBackground } from "@/components/FloraTabBarBackground";
 import { FeedLightboxProvider } from "@/components/feed/FeedLightboxHost";
 import { HamburgerMenuProvider } from "@/components/HamburgerMenuProvider";
@@ -215,6 +216,10 @@ export default function TabsLayout() {
         </Tabs>
         <MusicMiniPlayer />
         {overlay}
+        {/* Восстановление поверхности чата после системных activity (пикер фото).
+            Живёт здесь, а не в Messages: холодный старт после смерти процесса
+            попадает на ленту, и вкладка Messages ещё не смонтирована. */}
+        <ChatSurfaceRestorer />
         </View>
       </FeedLightboxProvider>
     </HamburgerMenuProvider>

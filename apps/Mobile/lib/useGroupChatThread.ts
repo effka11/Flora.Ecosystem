@@ -30,6 +30,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
+import { runAfterChatPickActivity } from "@/lib/chatPickActivity";
 import { groupRosterNeedsRefresh, mergeGroupDetail } from "@/lib/groupChatMap";
 import type { GroupChat } from "@/lib/groupChatTypes";
 import {
@@ -108,10 +109,15 @@ export function useGroupChatThread(params: {
   const [pendingEpoch, setPendingEpoch] = useState(0);
 
   const exitToList = useCallback(() => {
-    setGroupPendingOutgoing(conversationUuid, null);
-    void queryClient.invalidateQueries({ queryKey: ["groups"] });
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/messages");
+    // Пикер фото впереди — это чужая activity: back под ней исполнится
+    // невидимо, и пользователь вернётся из галереи в список чатов. Выход
+    // откладывается до конца обработки результата пикера.
+    runAfterChatPickActivity(() => {
+      setGroupPendingOutgoing(conversationUuid, null);
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/messages");
+    });
   }, [conversationUuid, queryClient]);
 
   const groupQuery = useQuery({
