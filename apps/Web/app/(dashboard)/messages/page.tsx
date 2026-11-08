@@ -387,10 +387,6 @@ function composeTextVerticalPaddingPx(): number {
   return 2 * getViewportFrame().stepFine;
 }
 
-function composeStripHeightPx(): number {
-  const { step, stepFine } = getViewportFrame();
-  return 5 * step + 2 * stepFine;
-}
 /** Синхронно с `messagesStickerPanelOut` (`--flora-duration-2`). */
 const STICKER_PANEL_CLOSE_MS = floraDurationMs(2) + 50;
 
@@ -674,8 +670,11 @@ function MessagesChatInner() {
   const voiceRecorder = useVoiceRecorder(compose.setVoiceFromRecording);
   const composeInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const composeAttachStripsRef = useRef<HTMLDivElement | null>(null);
   const sendVoiceAfterRecordingRef = useRef(false);
   const [composeExtraRows, setComposeExtraRows] = useState(0);
+  /** Фактическая высота полосы вложений; 0 — полосы нет. */
+  const [composeStripsHeight, setComposeStripsHeight] = useState(0);
   const [stickerPanelOpen, setStickerPanelOpen] = useState(false);
   const [stickerPanelRendered, setStickerPanelRendered] = useState(false);
   const [stickerPanelClosing, setStickerPanelClosing] = useState(false);
@@ -822,13 +821,39 @@ function MessagesChatInner() {
   }, [compose.mode, compose.text]);
 
   const composeExtraHeight = composeExtraRows * composeTextLineHeightPx();
-  /* Каждая полоса над textarea (ответ / медиа): 1×step + 4×step + 2×fine gap. */
   const composeStripCount =
     compose.mode === "text"
       ? (replyTo ? 1 : 0) +
         (compose.images.length > 0 || compose.videos.length > 0 ? 1 : 0)
       : 0;
-  const composeImagesExtraHeight = composeStripCount * composeStripHeightPx();
+  /*
+   * Полоса вложений — часть border-box поля, её высоту нельзя выводить из
+   * констант: одна полоса = 1×step над карточками + 4×step карточки, две —
+   * ещё gap. В поле при появлении полосы `padding-top` обнуляется (`:has`),
+   * поэтому реальный рост поля меньше высоты полосы на этот отступ.
+   * Меряем полосу, чтобы padding ленты, линия и compose не разъезжались.
+   */
+  useLayoutEffect(() => {
+    const el = composeAttachStripsRef.current;
+    if (!el) {
+      setComposeStripsHeight((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    const read = () => {
+      const next = Math.round(el.getBoundingClientRect().height * 100) / 100;
+      setComposeStripsHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [composeStripCount]);
+
+  const composeImagesExtraHeight =
+    composeStripCount > 0
+      ? Math.max(0, composeStripsHeight - composeTextVerticalPaddingPx())
+      : 0;
   const messagesChatViewStyle = useMemo(
     () =>
       ({
@@ -4961,7 +4986,7 @@ function MessagesChatInner() {
                 >
                   {!voiceComposeActive &&
                   (replyTo || compose.images.length > 0 || compose.videos.length > 0) ? (
-                    <div className={styles.messagesComposeAttachStrips}>
+                    <div ref={composeAttachStripsRef} className={styles.messagesComposeAttachStrips}>
                       {replyTo ? (
                         <MessageComposeReplyBar reply={replyTo} onDismiss={() => setReplyTo(null)} />
                       ) : null}
@@ -4969,8 +4994,17 @@ function MessagesChatInner() {
                         <div className={styles.messagesComposeImageStrip}>
                           {compose.images.map((image, index) => (
                             <div key={image.id} className={styles.messagesComposeImageItem}>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img className={styles.messagesComposeImageThumb} src={image.objectUrl} alt="" />
+                              {image.objectUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  className={styles.messagesComposeImageThumb}
+                                  src={image.objectUrl}
+                                  alt=""
+                                  decoding="async"
+                                />
+                              ) : (
+                                <span className={styles.messagesComposeImagePending} aria-hidden />
+                              )}
                               {image.preparing ? (
                                 <span className={styles.messagesComposeVideoBadge}>Сжатие…</span>
                               ) : null}

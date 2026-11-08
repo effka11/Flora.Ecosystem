@@ -1,7 +1,7 @@
 import { liveGridStyles } from "@/lib/liveGridStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { memo } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { useSPx } from "@/lib/FloraGridProvider";
 import { useFloraTheme } from "@/lib/FloraThemeProvider";
@@ -13,6 +13,8 @@ type Props = {
   sentColor?: string;
   /** Меньший отступ, когда галочки идут сразу после inline-времени. */
   compactMargin?: boolean;
+  /** Внешняя геометрия слота (например, зазор до текста превью в списке). */
+  style?: StyleProp<ViewStyle>;
 };
 
 /** Без react-native-svg — работает в текущем dev build; размеры как messagesBubbleReceipt на Web. */
@@ -20,15 +22,16 @@ function ChatMessageReadReceiptInner({
   state,
   sentColor = "rgba(242, 244, 246, 0.78)",
   compactMargin = false,
+  style,
 }: Props) {
   const sp = useSPx();
   useFloraTheme();
-  const receiptStyle = [styles.receipt, compactMargin && styles.receiptCompactMargin];
+  const receiptStyle = [styles.receipt, compactMargin && styles.receiptCompactMargin, style];
 
   if (state === "sending") {
     return (
       <View style={receiptStyle} accessibilityLabel="Отправляется">
-        <Ionicons name="time-outline" size={sp(10)} color={sentColor} />
+        <Ionicons name="time-outline" size={sp(13)} color={sentColor} />
       </View>
     );
   }
@@ -36,10 +39,10 @@ function ChatMessageReadReceiptInner({
   if (state === "read") {
     return (
       <View style={[receiptStyle, styles.receiptRead]} accessibilityLabel="Прочитано">
-        <Ionicons name="checkmark" size={sp(11)} color={floraColors.greenLight} />
+        <Ionicons name="checkmark" size={sp(15)} color={floraColors.greenLight} />
         <Ionicons
           name="checkmark"
-          size={sp(11)}
+          size={sp(15)}
           color={floraColors.greenLight}
           style={styles.receiptReadSecond}
         />
@@ -49,7 +52,7 @@ function ChatMessageReadReceiptInner({
 
   return (
     <View style={receiptStyle} accessibilityLabel="Отправлено">
-      <Ionicons name="checkmark" size={sp(11)} color={sentColor} />
+      <Ionicons name="checkmark" size={sp(15)} color={sentColor} />
     </View>
   );
 }
@@ -57,13 +60,13 @@ function ChatMessageReadReceiptInner({
 export const ChatMessageReadReceipt = memo(ChatMessageReadReceiptInner);
 
 const styles = liveGridStyles(() => StyleSheet.create({
-  /** Fixed 18×10 slot so sending/sent/read never resize the bubble (parity web). */
+  /** Fixed 18×15 slot so sending/sent/read never resize the bubble (parity web). */
   receipt: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     width: sPx(18),
-    height: 2 * floraSpacing.gridFine,
+    height: 3 * floraSpacing.gridFine,
     marginLeft: floraSpacing.gridFine * 2,
     opacity: 0.82,
   },
@@ -74,7 +77,8 @@ const styles = liveGridStyles(() => StyleSheet.create({
     justifyContent: "flex-start",
     opacity: 1,
   },
+  /** Две галочки в том же слоте 18: шаг между ними — как было при size 11 (−8 → 3). */
   receiptReadSecond: {
-    marginLeft: -sPx(8),
+    marginLeft: -sPx(12),
   },
 }));

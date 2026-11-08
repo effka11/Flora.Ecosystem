@@ -94,18 +94,38 @@ export function messageImageAttachError(result: Pick<MergeMessageImagesResult, "
 
 const IMAGE_PREPARE_MAX_LONG_SIDE = 2048;
 const JPEG_PREPARE_QUALITY = 0.88;
+const PREVIEW_MAX_LONG_SIDE = 320;
+const IMAGE_DECODE_TIMEOUT_MS = 15_000;
 
 export type PreparedMessageImage = {
   blob: Blob;
   contentType: string;
   fileName: string;
+  /** Маленький превью для полосы вложений: оригинал в 48 МП не декодируем. */
+  previewBlob: Blob;
 };
 
-function loadImageDimensions(url: string): Promise<{ width: number; height: number }> {
+type LoadedMessageImage = {
+  image: HTMLImageElement;
+  width: number;
+  height: number;
+};
+
+function loadMessageImage(url: string): Promise<LoadedMessageImage> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => reject(new Error("Не удалось прочитать фото."));
+    const timer = window.setTimeout(() => {
+      img.src = "";
+      reject(new Error("Не удалось прочитать фото."));
+    }, IMAGE_DECODE_TIMEOUT_MS);
+    img.onload = () => {
+      window.clearTimeout(timer);
+      resolve({ image: img, width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("Не удалось прочитать фото."));
+    };
     img.src = url;
   });
 }
@@ -121,43 +141,71 @@ function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality?: number)
 }
 
 /**
+ * Превью строится из уже декодированного img: полоса вложений больше не
+ * декодирует оригинал каждым <img>, а держит только маленький blob.
+ */
+async function renderPreviewBlob(
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+  sourceType: string,
+): Promise<Blob> {
+  const scale = Math.min(1, PREVIEW_MAX_LONG_SIDE / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  try {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D недоступен.");
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const mime = sourceType === "image/jpeg" ? "image/jpeg" : sourceType;
+    return await canvasToBlob(canvas, mime, mime === "image/jpeg" ? 0.8 : undefined);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+/**
  * Готовит фото к E2E-отправке: при необходимости уменьшает длинную сторону и перекодирует,
- * чтобы уложиться в лимит 5 МБ.
+ * чтобы уложиться в лимит 5 МБ. Оригинал декодируется один раз — второй <img>
+ * для drawImage больше не создаётся (пик памяти на крупных снимках).
  */
 export async function prepareMessageImage(file: File): Promise<PreparedMessageImage> {
   const normalized = normalizeMessageImageFile(file);
   if (!normalized) throw new Error("Поддерживаются JPEG, PNG и WebP до 5 МБ.");
 
   const url = URL.createObjectURL(normalized);
+  let decoded: HTMLImageElement | null = null;
+  let canvas: HTMLCanvasElement | null = null;
   try {
-    const { width, height } = await loadImageDimensions(url);
+    const loaded = await loadMessageImage(url);
+    decoded = loaded.image;
+    const { width, height } = loaded;
+    const previewBlob = await renderPreviewBlob(decoded, width, height, normalized.type);
     const longSide = Math.max(width, height);
     const needsResize = longSide > IMAGE_PREPARE_MAX_LONG_SIDE;
     const needsShrink = normalized.size > MAX_MESSAGE_IMAGE_BYTES * 0.9;
 
     if (!needsResize && !needsShrink) {
-      return { blob: normalized, contentType: normalized.type, fileName: normalized.name };
+      return {
+        blob: normalized,
+        contentType: normalized.type,
+        fileName: normalized.name,
+        previewBlob,
+      };
     }
 
     const factor = needsResize ? IMAGE_PREPARE_MAX_LONG_SIDE / longSide : 1;
     const targetW = Math.max(1, Math.round(width * factor));
     const targetH = Math.max(1, Math.round(height * factor));
 
-    const canvas = document.createElement("canvas");
+    canvas = document.createElement("canvas");
     canvas.width = targetW;
     canvas.height = targetH;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D недоступен.");
-
-    await new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, targetW, targetH);
-        resolve();
-      };
-      img.onerror = () => reject(new Error("Не удалось обработать фото."));
-      img.src = url;
-    });
+    ctx.drawImage(decoded, 0, 0, targetW, targetH);
 
     const preferJpeg = needsShrink || normalized.type === "image/jpeg";
     const targetMime = preferJpeg ? "image/jpeg" : normalized.type;
@@ -180,8 +228,18 @@ export async function prepareMessageImage(file: File): Promise<PreparedMessageIm
     const ext =
       blob.type === "image/jpeg" ? "jpg" : blob.type === "image/webp" ? "webp" : "png";
     const baseName = normalized.name.replace(/\.[^.]+$/, "") || "photo";
-    return { blob, contentType: blob.type || targetMime, fileName: `${baseName}.${ext}` };
+    return {
+      blob,
+      contentType: blob.type || targetMime,
+      fileName: `${baseName}.${ext}`,
+      previewBlob,
+    };
   } finally {
+    if (decoded) decoded.src = "";
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
     URL.revokeObjectURL(url);
   }
 }

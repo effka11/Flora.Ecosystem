@@ -2238,6 +2238,14 @@
   display: block;
 }
 
+/* Пока prepare не отдал маленькое превью — не декодируем оригинал. */
+.messagesComposeImagePending {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--flora-white-template-rgb), 0.06);
+}
+
 .messagesComposeImageRemove {
   position: absolute;
   top: var(--flora-sPx-2);

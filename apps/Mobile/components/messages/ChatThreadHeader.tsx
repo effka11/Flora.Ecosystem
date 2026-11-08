@@ -157,14 +157,9 @@ export function ChatThreadHeader({ peer, onMorePress, moreMenuOpen = false, more
       </View>
 
       <View style={styles.info}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <Text style={styles.handle} numberOfLines={1}>
-            @{username}
-          </Text>
-        </View>
+        <Text style={styles.name} numberOfLines={1}>
+          {displayName}
+        </Text>
         <Text
           style={styles.status}
           numberOfLines={1}
@@ -229,23 +224,9 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.gridFine,
   },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: floraSpacing.gridFine * 2,
-    minWidth: 0,
-  },
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
-    fontSize: kegl(15),
-    fontWeight: "300",
-    letterSpacing: tracking(0.45),
-    lineHeight: 4 * floraSpacing.gridFine,
-  },
-  handle: {
-    flexShrink: 0,
-    color: floraColors.gray,
     fontSize: kegl(15),
     fontWeight: "300",
     letterSpacing: tracking(0.45),

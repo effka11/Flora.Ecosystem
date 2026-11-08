@@ -123,6 +123,7 @@ impl MessagingRepo {
                 enc_sender: m.encrypted_for_sender,
                 at: m.created_at,
                 from_me: is_from_me,
+                is_read: m.is_read,
             });
 
             if !is_from_me && !m.is_read {
@@ -146,6 +147,7 @@ impl MessagingRepo {
                     last_content,
                     last_message_at: last.at,
                     last_is_from_me: last.from_me,
+                    last_is_read: last.is_read,
                     unread_count: unread_by_other.get(&other).copied().unwrap_or(0),
                 }
             })
@@ -741,6 +743,7 @@ struct LastPeer {
     enc_sender: Option<String>,
     at: DateTime<Utc>,
     from_me: bool,
+    is_read: bool,
 }
 
 #[derive(sqlx::FromRow)]

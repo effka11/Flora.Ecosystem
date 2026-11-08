@@ -511,12 +511,17 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Прикрепить фото"
+            accessibilityLabel={emojiChrome ? "Показать клавиатуру" : "Стикеры и эмодзи"}
+            accessibilityState={{ expanded: emojiChrome }}
             style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-            disabled={disabled || !onPickImages}
-            onPress={onPickImages}
+            onPress={handleEmojiPress}
+            disabled={disabled}
           >
-            <Ionicons name="add" size={sp(20)} color={disabled || !onPickImages ? floraColors.gray : floraColors.greenLight} />
+            <Ionicons
+              name={emojiChrome ? "keypad-outline" : "happy-outline"}
+              size={sp(20)}
+              color={disabled ? floraColors.gray : floraColors.greenLight}
+            />
           </Pressable>
 
           <Animated.View style={inputZoneStyle}>
@@ -584,17 +589,12 @@ export const ChatComposeField = forwardRef<ChatComposeFieldHandle, Props>(functi
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={emojiChrome ? "Показать клавиатуру" : "Стикеры и эмодзи"}
-            accessibilityState={{ expanded: emojiChrome }}
+            accessibilityLabel="Прикрепить фото"
             style={({ pressed }) => [styles.chromeBtn, pressed && styles.chromeBtnPressed]}
-            onPress={handleEmojiPress}
-            disabled={disabled}
+            disabled={disabled || !onPickImages}
+            onPress={onPickImages}
           >
-            <Ionicons
-              name={emojiChrome ? "keypad-outline" : "happy-outline"}
-              size={sp(20)}
-              color={floraColors.gray}
-            />
+            <Ionicons name="add" size={sp(24)} color={floraColors.gray} />
           </Pressable>
 
           {showSendChrome ? (

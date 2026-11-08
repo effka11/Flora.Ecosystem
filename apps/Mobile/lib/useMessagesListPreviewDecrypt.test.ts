@@ -23,6 +23,7 @@ function conversation(
     lastMessageContent: null,
     lastMessageAt: "2026-08-20T00:00:00.000Z",
     lastMessageIsFromMe: false,
+    lastMessageIsRead: false,
     unreadCount: 0,
     otherUserIsOnline: false,
     otherUserLastSeenAt: null,
