@@ -6,8 +6,11 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FloraAvatar } from "@/components/FloraAvatar";
+import { ChatMessageReadReceipt } from "@/components/messages/ChatMessageReadReceipt";
 import { ConversationListSelectionMark } from "@/components/messages/ConversationListSelectionMark";
 import { OnlineStatusDot } from "@/components/messages/OnlineStatusDot";
+import { conversationLastMessageState } from "@/lib/messageDeliveryState";
+import { isOutgoingMessagePending } from "@/lib/messageThreadOutgoing";
 import { warmParkedChatAvatars } from "@/lib/chatOpenAvatarWarm";
 import {
   warmChatOpenTextLayoutAtTap,
@@ -73,8 +76,12 @@ export function ConversationListRow({
 }: Props) {
   useFloraTheme();
   const displayName = item.otherDisplayName || item.otherUsername;
-  const username = item.otherUsername.replace(/^@+/, "") || "…";
   const preview = formatConversationPreview(item, item.preview);
+  const receiptState = conversationLastMessageState({
+    isFromMe: item.lastMessageIsFromMe,
+    isRead: item.lastMessageIsRead === true,
+    isSending: isOutgoingMessagePending(item.conversationUuid, item.lastMessageAt),
+  });
   const [presenceTick, setPresenceTick] = useState(0);
   const [lit, setLit] = useState(false);
   useEffect(() => sharedPresenceStore.subscribe(() => setPresenceTick((n) => n + 1)), []);
@@ -212,17 +219,21 @@ export function ConversationListRow({
         </View>
 
         <View style={styles.body}>
-          <View style={styles.titleRow}>
-            <Text style={styles.name} numberOfLines={1}>
-              {displayName}
-            </Text>
-            <Text style={styles.handle} numberOfLines={1}>
-              @{username}
-            </Text>
-          </View>
-          <Text style={styles.preview} numberOfLines={1}>
-            {preview}
+          <Text style={styles.name} numberOfLines={1}>
+            {displayName}
           </Text>
+          <View style={[styles.previewRow, receiptState != null && styles.previewRowWithReceipt]}>
+            <Text style={styles.preview} numberOfLines={1}>
+              {preview}
+            </Text>
+            {receiptState != null ? (
+              <ChatMessageReadReceipt
+                state={receiptState}
+                sentColor={floraColors.gray}
+                style={styles.previewReceipt}
+              />
+            ) : null}
+          </View>
         </View>
       </View>
 
@@ -280,12 +291,6 @@ const styles = liveGridStyles(() => StyleSheet.create({
     minWidth: 0,
     gap: floraSpacing.gridFine,
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: floraSpacing.gridFine * 2,
-    minWidth: 0,
-  },
   name: {
     flexShrink: 1,
     color: floraColors.whiteTemplate,
@@ -294,20 +299,30 @@ const styles = liveGridStyles(() => StyleSheet.create({
     letterSpacing: tracking(0.45),
     lineHeight: 4 * floraSpacing.gridFine,
   },
-  handle: {
-    flexShrink: 0,
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+  /**
+   * Центр слота галочки — вертикаль «+»/правой папки: слот «+» стоит в 15–60 px
+   * от края (центр 37.5), текст обрезается на 25 → сдвигаем строку превью ещё
+   * на 3.5, чтобы слот 18 px сел центром ровно на 37.5.
+   */
+  previewRowWithReceipt: {
+    paddingRight: sPx(3.5),
+  },
+  preview: {
+    flexShrink: 1,
+    minWidth: 0,
     color: floraColors.gray,
     fontSize: kegl(15),
     fontWeight: "300",
     letterSpacing: tracking(0.45),
     lineHeight: 4 * floraSpacing.gridFine,
   },
-  preview: {
-    color: floraColors.gray,
-    fontSize: kegl(15),
-    fontWeight: "300",
-    letterSpacing: tracking(0.45),
-    lineHeight: 4 * floraSpacing.gridFine,
+  previewReceipt: {
+    marginLeft: sPx(6),
   },
   trailing: {
     width: HEADER_TRAILING_ICON_SLOT(),
