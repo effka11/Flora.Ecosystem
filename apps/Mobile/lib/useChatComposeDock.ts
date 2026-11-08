@@ -26,6 +26,12 @@ import {
 } from "react-native-reanimated";
 import { canScrollChatList } from "@/lib/chatListEnterMount";
 import { noteChatOpenRevealPath } from "@/lib/chatOpenTrace";
+import {
+  ENTER_COVER_UNMOUNT_MARGIN_MS,
+  LIST_REVEAL_WATCHDOG_MS,
+  shouldRecoverReveal,
+  shouldUnmountEnterCover,
+} from "@/lib/chatThreadVisibility";
 import { type ComposeShellMetrics } from "@/lib/composeShellMetrics";
 import { keyboardHeightForDock, reconciledKeyboardGeometry } from "@/lib/keyboardGeometry";
 import { ENERGETIC_OPEN_EASING } from "@/lib/energeticSettle";
@@ -271,6 +277,8 @@ export type ChatComposeDock = {
   listEnterCoverStyle: AnimatedStyle<ViewStyle>;
   /** Спрятать ленту до следующего показа — на смене треда. */
   hideListUntilReady: () => void;
+  /** Аварийный JS-ремонт видимости ленты после возврата из системного пикера. */
+  recoverSurface: (wasRevealed: boolean) => void;
   /** Разрешить показ: тред расшифрован, высоты больше не поедут. */
   allowListReveal: () => void;
   /**
@@ -297,6 +305,12 @@ export type ChatComposeDock = {
   onListContentSizeChange: (w: number, h: number) => void;
   /** Лента показана (reveal состоялся): пора запускать тихий пост-догруз. */
   listRevealed: boolean;
+  /**
+   * Ковёр входа ещё в дереве. После окна фейда хук снимает его сам;
+   * экран рендерит слой только при true (непрозрачный слой поверх ленты
+   * не имеет права пережить потерянную анимацию).
+   */
+  enterCoverVisible: boolean;
   /** Стек на экране — заглушке можно появляться, если лента ещё скрыта. */
   finishEnterTransition: () => void;
   composeBaselinePx: number;
@@ -587,6 +601,25 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
    * чтобы merge и ре-рендеры не крали кадры у открытия.
    */
   const [listRevealed, setListRevealed] = useState(false);
+  /**
+   * Ковёр входа живёт в дереве только до окна своего фейда. Держать его
+   * смонтированным после показа нельзя: opacity — UI-значение, а начальное
+   * (непрозрачное) значение запекается в JS-пропсах. Потерянный через
+   * activity-переход `withTiming` оставил бы ковёр поверх ленты навсегда —
+   * пузыри «пропадали» бы до перезапуска приложения.
+   */
+  const [enterCoverVisible, setEnterCoverVisible] = useState(true);
+  const listRevealedRef = useRef(false);
+  listRevealedRef.current = listRevealed;
+  /** Поколение ковра: hide нового треда отменяет отложенный unmount прошлого. */
+  const enterCoverEpochRef = useRef(0);
+  const enterCoverUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** JS-страховка показа: UI-цикл мог не доехать через activity-переход. */
+  const revealWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** `revealListNow` объявлен ниже; watchdog зовёт его через ref. */
+  const revealListNowRef = useRef<(options?: { immediateCover?: boolean }) => void>(
+    () => undefined,
+  );
 
   /** Кадры подряд без onContentSizeChange ленты (см. LIST_LAYOUT_QUIET_FRAMES). */
   const listLayoutQuietSv = useSharedValue(0);
@@ -630,10 +663,45 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
   const revealSettleUntilRef = useRef(0);
   const lastContentHeightRef = useRef(0);
 
-  const markRevealed = useCallback(() => {
-    revealSettleUntilRef.current = Date.now() + SETTLE_TRACE_WINDOW_MS;
-    setListRevealed(true);
+  const clearEnterCoverUnmount = useCallback(() => {
+    if (enterCoverUnmountTimerRef.current != null) {
+      clearTimeout(enterCoverUnmountTimerRef.current);
+      enterCoverUnmountTimerRef.current = null;
+    }
   }, []);
+
+  const clearRevealWatchdog = useCallback(() => {
+    if (revealWatchdogRef.current != null) {
+      clearTimeout(revealWatchdogRef.current);
+      revealWatchdogRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Снять непрозрачный ковёр с дерева после окна фейда. Таймер — JS, а не
+   * завершение `withTiming`: колбэк анимации может потеряться в activity-pause,
+   * а пузыри под непрозрачным ковром обязаны появиться в любом случае.
+   */
+  const scheduleEnterCoverUnmount = useCallback(() => {
+    clearEnterCoverUnmount();
+    const epoch = enterCoverEpochRef.current;
+    enterCoverUnmountTimerRef.current = setTimeout(() => {
+      enterCoverUnmountTimerRef.current = null;
+      if (epoch !== enterCoverEpochRef.current) return;
+      if (!shouldUnmountEnterCover(listRevealedRef.current)) return;
+      setEnterCoverVisible(false);
+    }, floraMotion.tabTransitionDelayMs + REVEAL_COVER_FADE_MS + ENTER_COVER_UNMOUNT_MARGIN_MS);
+  }, [clearEnterCoverUnmount]);
+
+  const markRevealed = useCallback(() => {
+    // Синхронное зеркало: watchdog, сработавший в том же тике, не должен
+    // принять уже состоявшийся показ за потерянный.
+    listRevealedRef.current = true;
+    revealSettleUntilRef.current = Date.now() + SETTLE_TRACE_WINDOW_MS;
+    clearRevealWatchdog();
+    scheduleEnterCoverUnmount();
+    setListRevealed(true);
+  }, [clearRevealWatchdog, scheduleEnterCoverUnmount]);
 
   /**
    * Любое изменение размера контента ленты обнуляет тишину лэйаута: волна
@@ -718,8 +786,17 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     settleLogBudgetSv.value = 0;
     revealSettleUntilRef.current = 0;
     lastContentHeightRef.current = 0;
+    // Ковёр нового треда монтируется заново: отложенный unmount прошлого
+    // показа не должен снять его в первом кадре.
+    enterCoverEpochRef.current += 1;
+    clearEnterCoverUnmount();
+    clearRevealWatchdog();
+    listRevealedRef.current = false;
+    setEnterCoverVisible(true);
     setListRevealed(false);
   }, [
+    clearEnterCoverUnmount,
+    clearRevealWatchdog,
     listEnterCoverSv,
     listLayoutQuietSv,
     listLoadedSv,
@@ -773,6 +850,29 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     // Показ решён — отложенный спиннер (finishEnterTransition) больше не
     // нужен: не даём ему вспыхнуть, пока FlashList домеряет строки.
     cancelAnimation(listPlaceholderSv);
+    /**
+     * JS-страховка показа. Цикл ниже живёт на UI-потоке и `runOnJS`; системный
+     * пикер может приостановить activity ровно в этот переход, и тогда
+     * `listRevealed` не станет true, а лента останется под непрозрачным ковром.
+     * Потолок ждёт больше нормального цикла и показывает ленту JS-путём
+     * (`revealListNow` пишет shared values напрямую, без ворклетов).
+     */
+    clearRevealWatchdog();
+    revealWatchdogRef.current = setTimeout(() => {
+      revealWatchdogRef.current = null;
+      if (
+        !shouldRecoverReveal({
+          revealStarted: listRevealStartedSv.value,
+          revealed: listRevealedRef.current,
+        })
+      ) {
+        return;
+      }
+      if (__DEV__) {
+        console.log("[chat-open] watchdog reveal: UI-цикл показа не доехал — показываем из JS");
+      }
+      revealListNowRef.current({ immediateCover: true });
+    }, LIST_REVEAL_WATCHDOG_MS);
     runOnUI(() => {
       let framesLeft = 60;
       // Кадры подряд, в которые офсет фактически замерен на якоре (Android),
@@ -893,6 +993,7 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     noteRevealPath,
     pinToBottomSv,
     revealAtSv,
+    clearRevealWatchdog,
     settleLogBudgetSv,
     skipMotionSv,
   ]);
@@ -959,6 +1060,24 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     settleLogBudgetSv,
     skipMotionSv,
   ]);
+  revealListNowRef.current = revealListNow;
+
+  /**
+   * JS-ремонт показа после возврата из системного пикера.
+   *
+   * Пикер — отдельная activity: UI-цикл показа (requestAnimationFrame + runOnJS)
+   * в паузе мог не доехать, и лента осталась под непрозрачным ковром — те же
+   * «пропавшие пузыри». Ремонтируем только уже показанный до пикера тред:
+   * если показ ещё не состоялся, его ведёт обычный путь (у него свой watchdog).
+   */
+  const recoverSurface = useCallback(
+    (wasRevealed: boolean) => {
+      if (!wasRevealed) return;
+      if (listRevealedRef.current) return;
+      revealListNow({ immediateCover: true });
+    },
+    [revealListNow],
+  );
 
   // --- Дев-трассировка осадки: что двигает ленту сразу после показа ---
 
@@ -1669,8 +1788,10 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
         clearTimeout(kbShowWatchdogRef.current);
         kbShowWatchdogRef.current = null;
       }
+      clearEnterCoverUnmount();
+      clearRevealWatchdog();
     };
-  }, [emojiActiveSv, emojiLiftSv]);
+  }, [clearEnterCoverUnmount, clearRevealWatchdog, emojiActiveSv, emojiLiftSv]);
 
   return {
     dockStickyStyle,
@@ -1695,6 +1816,8 @@ export function useChatComposeDock(config: ChatComposeDockConfig): ChatComposeDo
     onListLoad,
     onListContentSizeChange,
     listRevealed,
+    enterCoverVisible,
+    recoverSurface,
     finishEnterTransition,
     composeBaselinePx,
     emojiPanelHeightPx,
